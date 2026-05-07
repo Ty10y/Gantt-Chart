@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editable Gantt Chart v5</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; color: #333; line-height: 1.6; }
+  
+  #mainTitle { 
+    display: inline-block; 
+    cursor: pointer; 
+    padding: 4px 10px; 
+    border-radius: 4px; 
+    transition: background 0.2s;
+    margin-bottom: 20px;
+    border: 1px solid transparent;
+  }
+  #mainTitle:hover { background: #f5f5f5; border: 1px dashed #ccc; }
+  #mainTitle:focus { background: #fff; border: 1px solid #4f8df5; outline: none; }
+
+  table { border-collapse: collapse; width: 100%; margin-bottom: 20px; background: #fff; }
+  th, td { border-bottom: 1px solid #eee; padding: 12px 8px; text-align: left; }
+  th { background: #fafafa; font-weight: 600; color: #666; font-size: 0.9em; text-transform: uppercase; }
+  
+  input { 
+    width: 100%; 
+    box-sizing: border-box; 
+    border: none; 
+    border-bottom: 1px solid transparent;
+    padding: 6px;
+    transition: all 0.2s;
+    background: transparent;
+  }
+  input:hover { border-bottom: 1px solid #ddd; background: #fafafa; }
+  input:focus { border-bottom: 1px solid #4f8df5; outline: none; background: #fff; }
+
+  .drag-handle {
+    cursor: grab;
+    display: flex;
+    flex-wrap: wrap;
+    width: 12px;
+    height: 18px;
+    gap: 3px;
+    margin-right: 10px;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+    user-select: none;
+    align-content: center;
+    flex-shrink: 0;
+  }
+  .drag-handle:hover { opacity: 0.8; }
+  .drag-handle:active { cursor: grabbing; }
+  .dot { width: 3px; height: 3px; background-color: #333; border-radius: 50%; }
+  
+  tr.dragging, .row.dragging { opacity: 0.5; background: #f0f7ff !important; }
+  tr.drag-over, .row.drag-over { background: #f0f7ff; }
+
+  .btn-group { display: flex; align-items: center; gap: 10px; margin-bottom: 25px; }
+  
+  button { 
+    position: relative;
+    padding: 8px 12px; 
+    cursor: pointer; 
+    border: 1px solid #ddd; 
+    background: #fff; 
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  button:hover { background: #f5f5f5; border-color: #bbb; }
+  
+  .btn-primary { 
+    padding: 8px 16px;
+    background: #4f8df5; 
+    color: white; 
+    border-color: #4f8df5; 
+    font-weight: 500;
+  }
+  .btn-primary:hover { background: #3b79e1; }
+
+  button[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s;
+    z-index: 100;
+  }
+  button[data-tooltip]:hover::after { opacity: 1; visibility: visible; }
+
+  .hidden { display: none; }
+
+  #timeline { border: 1px solid #eee; border-radius: 8px; overflow-x: auto; position: relative; background: #fff; user-select: none; }
+  #dateHeader { position: sticky; top: 0; background: #fff; z-index: 30; border-bottom: 1px solid #eee; }
+
+  .months, .days { position: relative; height: 28px; white-space: nowrap; }
+  .month { position: absolute; height: 28px; border-right: 1px solid #eee; font-size: 11px; font-weight: bold; text-align: center; line-height: 28px; color: #555; }
+  .day { position: absolute; height: 28px; border-right: 1px solid #f9f9f9; font-size: 10px; text-align: center; line-height: 28px; color: #999; }
+
+  .weekend-header { background: #f4f4f4; color: #bbb; }
+  .today-header { background: rgba(255, 215, 0, 0.2); color: #000; font-weight: bold; }
+
+  #chart { position: relative; min-height: 300px; white-space: nowrap; padding-bottom: 20px; }
+  .row { position: relative; height: 40px; border-bottom: 1px solid #f9f9f9; display: flex; align-items: center; transition: background 0.1s; }
+
+  /* UPDATE 1: Sticky Label Container */
+  .label-container {
+    position: sticky;
+    left: 0;
+    z-index: 25;
+    width: 200px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    background: white;
+    border-right: 1px solid #eee;
+    padding-left: 10px;
+    box-sizing: border-box;
+  }
+
+  .label {
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+    cursor: text;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background 0.2s;
+    flex-grow: 1;
+  }
+  .label:hover { background: #f0f0f0; }
+  .label:focus { background: #fff; outline: 1px solid #4f8df5; }
+
+  .bar {
+    position: absolute;
+    height: 24px;
+    background: #fff;
+    border: 2px solid #4f8df5;
+    border-radius: 12px;
+    z-index: 4;
+    box-shadow: 0 2px 4px rgba(79, 141, 245, 0.1);
+    cursor: move; /* UPDATE 2: Visual cue for dragging */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  
+  .bar-progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: #4f8df5;
+    z-index: 0;
+    pointer-events: none;
+    transition: width 0.3s ease;
+  }
+
+  .bar.linked { height: 12px; border-radius: 6px; border-color: #888; }
+  .bar.linked .bar-progress { background: #888; }
+  
+  .resize-handle {
+    width: 12px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 5;
+    background: transparent;
+  }
+  .resize-handle:hover { background: rgba(0,0,0,0.05); }
+
+  .connector { position: absolute; border-left: 2px solid #ccc; border-bottom: 2px solid #ccc; z-index: 1; pointer-events: none; }
+
+  .today-column {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(255, 215, 0, 0.1);
+    z-index: 1;
+    pointer-events: none;
+    border-left: 1px dashed gold;
+    border-right: 1px dashed gold;
+  }
+
+  .weekend-column {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: #f9f9f9;
+    z-index: 0;
+    pointer-events: none;
+  }
+  
+  .action-btn { color: #666; border: none; background: transparent; cursor: pointer; font-size: 14px; padding: 4px 8px; margin: 0; }
+  .action-btn:hover { color: #000; background: #eee; border-radius: 4px; }
+  .delete-btn { color: #cc0000; }
+  .delete-btn:hover { color: #ff0000; background: #fee2e2; }
+  
+  .order-controls { display: flex; align-items: center; justify-content: center; gap: 2px; }
+
+  .bar-menu {
+    position: fixed;
+    background: #ffffff;
+    border: 1px solid #ddd;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-radius: 6px;
+    z-index: 1000;
+    padding: 4px 0;
+    min-width: 120px;
+    animation: fadeIn 0.1s ease-out;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+  
+  .bar-menu-item {
+    padding: 10px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+    color: #444;
+  }
+  .bar-menu-item:hover:not(.disabled) { background: #f0f7ff; color: #4f8df5; }
+  .bar-menu-item.disabled { color: #ccc; cursor: not-allowed; }
+
+  svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Print Styles */
+  @media print {
+    @page { size: landscape; margin: 0; }
+
+    body {
+      margin: 0; padding: 0; background: white;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    /* Hide everything except the timeline */
+    body > *:not(#timeline) { display: none !important; }
+    #mainTitle { display: none !important; }
+
+    #timeline {
+      border: none !important;
+      overflow: visible !important;
+      /* scale is injected by printChart() at runtime */
+      transform-origin: top left;
+    }
+
+    #chart { overflow: visible !important; }
+
+    .label-container {
+      position: relative !important;
+      border-right: 1px solid #ccc;
+    }
+
+    .drag-handle, .resize-handle { display: none !important; }
+
+    .bar { border: 2px solid #004085 !important; background: #fff !important; box-shadow: none !important; }
+    .bar-progress { background: #0069d9 !important; }
+    .bar.linked { border-color: #333 !important; }
+    .bar.linked .bar-progress { background: #444 !important; }
+    .weekend-column { background: #f0f0f0 !important; }
+    .today-column { background: rgba(255,200,0,0.2) !important; border-right: none !important; }
+    .label-container { left: 0; padding-left: 0 !important; }
+  }
+</style>
+</head>
+<body>
+
+<h2 id="mainTitle" contenteditable="true">Gantt Chart Editor</h2>
+
+<div id="taskSection">
+  <table id="taskTable">
+    <thead>
+      <tr>
+        <th style="width: 50px;"></th>
+        <th style="width: 30%;">Task Name</th>
+        <th style="width: 15%;">Start Date</th>
+        <th style="width: 15%;">End Date</th>
+        <th style="width: 15%;">Progress</th>
+        <th style="width: 15%;">Actions</th>
+      </tr>
+    </thead>
+    <tbody id="taskTableBody"></tbody>
+  </table>
+</div>
+
+<div class="btn-group">
+  <button class="btn-primary" onclick="addTask()">+ Add Task</button>
+  <button onclick="toggleTasks()" data-tooltip="Toggle List"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg></button>
+  <button onclick="exportData()" data-tooltip="Export JSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8V3"></path></svg></button>
+  <button onclick="importData()" data-tooltip="Import JSON"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg></button>
+  <button onclick="printChart()" data-tooltip="Print Chart"><svg viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1-2 2h-2M6 14h12v8H6z"></path></svg></button>
+</div>
+
+<input id="fileInput" type="file" accept=".json" hidden>
+
+<div id="timeline">
+  <div id="dateHeader">
+    <div class="months"></div>
+    <div class="days"></div>
+  </div>
+  <div id="chart"></div>
+</div>
+
+<script>
+const pxPerDay = 24;
+const labelWidth = 200;
+const dayMs = 86400000;
+
+let tasks = [
+  { name: "Project Initiation", start: "2026-01-05", end: "2026-01-08", progress: 100, linked: false },
+  { name: "Order Material", start: "2026-01-09", end: "2026-01-12", progress: 60, linked: false },
+  { name: "Tooling Design", start: "2026-01-13", end: "2026-02-10", progress: 20, linked: false },
+  { name: "Tooling Fabrication", start: "2026-02-13", end: "2026-02-27", progress: 0, linked: false }
+];
+
+let draggedIndex = null;
+let currentMinDate = null;
+let isDragging = false;
+let dragType = null;
+let dragTaskIndex = null;
+let dragStartX = 0;
+let originalStartStr = "";
+let originalEndStr = "";
+let activeMenu = null;
+let hasMoved = false;
+
+function parseLocalDate(dateStr) {
+  if (!dateStr) return null;
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function toggleTasks() {
+  document.getElementById("taskSection").classList.toggle("hidden");
+}
+
+function addTask() {
+  const lastDate = tasks.length > 0 ? tasks[tasks.length-1].end : new Date().toISOString().split('T')[0];
+  tasks.push({ name: "New Task", start: lastDate, end: lastDate, progress: 0, linked: false });
+  renderAll();
+}
+
+function moveTask(index, direction) {
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= tasks.length) return;
+  const temp = tasks[index];
+  tasks[index] = tasks[newIndex];
+  tasks[newIndex] = temp;
+  renderAll();
+}
+
+function deleteTask(i) {
+  tasks.splice(i, 1);
+  renderAll();
+}
+
+function showBarMenu(e, index) {
+  e.stopPropagation();
+  closeBarMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "bar-menu";
+  menu.style.left = `${e.clientX}px`;
+  menu.style.top = `${e.clientY}px`;
+
+  const task = tasks[index];
+  const canLink = index > 0 && !task.linked;
+  const canUnlink = task.linked;
+  
+  menu.innerHTML = `
+    <div class="bar-menu-item ${!canLink ? 'disabled' : ''}" onclick="${canLink ? `setLinkStatus(${index}, true)` : ''}">Link Bar</div>
+    <div class="bar-menu-item ${!canUnlink ? 'disabled' : ''}" onclick="${canUnlink ? `setLinkStatus(${index}, false)` : ''}">Unlink Bar</div>
+  `;
+
+  document.body.appendChild(menu);
+  activeMenu = menu;
+
+  setTimeout(() => {
+    document.addEventListener('click', closeBarMenu, { once: true });
+  }, 10);
+}
+
+function closeBarMenu() {
+  if (activeMenu) {
+    activeMenu.remove();
+    activeMenu = null;
+  }
+}
+
+function setLinkStatus(index, status) {
+  tasks[index].linked = status;
+  closeBarMenu();
+  renderAll();
+}
+
+function updateTask(index, field, value) {
+  if (field === 'progress') {
+    value = Math.min(100, Math.max(0, parseInt(value) || 0));
+  }
+  tasks[index][field] = value;
+  renderChartOnly();
+}
+
+function renderTable() {
+  const tbody = document.getElementById("taskTableBody");
+  tbody.innerHTML = "";
+  tasks.forEach((t, i) => {
+    const tr = document.createElement("tr");
+    tr.dataset.index = i;
+    
+    tr.ondragover = (e) => { e.preventDefault(); tr.classList.add('drag-over'); };
+    tr.ondragleave = () => tr.classList.remove('drag-over');
+    tr.ondrop = (e) => {
+      e.preventDefault();
+      tr.classList.remove('drag-over');
+      const targetIndex = parseInt(tr.dataset.index);
+      if (draggedIndex !== null && draggedIndex !== targetIndex) {
+        const item = tasks.splice(draggedIndex, 1)[0];
+        tasks.splice(targetIndex, 0, item);
+        renderAll();
+      }
+    };
+
+    const handle = document.createElement("div");
+    handle.className = "drag-handle";
+    handle.innerHTML = Array(8).fill('<div class="dot"></div>').join('');
+    handle.onmousedown = () => { tr.draggable = true; };
+    handle.onmouseup = () => { tr.draggable = false; };
+    
+    tr.ondragstart = (e) => { draggedIndex = i; tr.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; };
+    tr.ondragend = () => { tr.classList.remove('dragging'); tr.draggable = false; };
+
+    tr.innerHTML = `
+        <td class="handle-cell"></td>
+        <td style="${t.linked ? 'padding-left: 30px;' : ''}"><input value="${t.name}" oninput="updateTask(${i}, 'name', this.value)"></td>
+        <td><input type="date" value="${t.start}" oninput="updateTask(${i}, 'start', this.value)"></td>
+        <td><input type="date" value="${t.end}" oninput="updateTask(${i}, 'end', this.value)"></td>
+        <td><div style="display:flex; align-items:center;"><input type="number" min="0" max="100" value="${t.progress || 0}" oninput="updateTask(${i}, 'progress', this.value)" style="width: 60px;"><span style="font-size: 12px; color: #888;">%</span></div></td>
+        <td><div class="order-controls">
+            <button class="action-btn" onclick="moveTask(${i}, -1)" ${i === 0 ? 'disabled style="opacity:0.2"' : ''}>▲</button>
+            <button class="action-btn" onclick="moveTask(${i}, 1)" ${i === tasks.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
+            <button class="action-btn delete-btn" onclick="deleteTask(${i})">✕</button>
+        </div></td>
+    `;
+    tr.querySelector('.handle-cell').appendChild(handle);
+    tbody.appendChild(tr);
+  });
+}
+
+function renderDates(minDate, maxDate) {
+  const monthsDiv = document.querySelector(".months");
+  const daysDiv = document.querySelector(".days");
+  monthsDiv.innerHTML = "";
+  daysDiv.innerHTML = "";
+
+  const totalDays = Math.ceil((maxDate - minDate) / dayMs) + 15;
+  const width = totalDays * pxPerDay + labelWidth;
+  monthsDiv.style.width = daysDiv.style.width = width + "px";
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  let currentMonth = -1;
+  let monthStartX = 0;
+
+  for (let i = 0; i < totalDays; i++) {
+    const date = new Date(minDate.getTime() + i * dayMs);
+    const x = i * pxPerDay + labelWidth;
+    const dayOfWeek = date.getDay();
+
+    const d = document.createElement("div");
+    d.className = "day";
+    d.style.left = x + "px";
+    d.style.width = pxPerDay + "px";
+    d.textContent = date.getDate();
+
+    if (dayOfWeek === 0 || dayOfWeek === 6) d.classList.add("weekend-header");
+    if (+date === +today) d.classList.add("today-header");
+    daysDiv.appendChild(d);
+
+    if (date.getMonth() !== currentMonth) {
+      if (currentMonth !== -1) monthsDiv.lastChild.style.width = (x - monthStartX) + "px";
+      currentMonth = date.getMonth();
+      monthStartX = x;
+      const m = document.createElement("div");
+      m.className = "month";
+      m.style.left = x + "px";
+      m.textContent = date.toLocaleString("default", { month: "short", year: "numeric" });
+      monthsDiv.appendChild(m);
+    }
+  }
+  if (monthsDiv.lastChild) monthsDiv.lastChild.style.width = (width - monthStartX) + "px";
+  return totalDays;
+}
+
+function initDrag(e, index, type) {
+  e.stopPropagation();
+  isDragging = true;
+  dragType = type;
+  dragTaskIndex = index;
+  dragStartX = e.clientX;
+  originalStartStr = tasks[index].start;
+  originalEndStr = tasks[index].end;
+  hasMoved = false;
+  
+  document.addEventListener('mousemove', handleDrag);
+  document.addEventListener('mouseup', stopDrag);
+}
+
+function handleDrag(e) {
+  if (!isDragging) return;
+  const deltaX = e.clientX - dragStartX;
+  const daysShift = Math.round(deltaX / pxPerDay);
+  if (daysShift === 0) return;
+  
+  hasMoved = true;
+  const task = tasks[dragTaskIndex];
+  
+  if (dragType === 'move') {
+    const s = parseLocalDate(originalStartStr);
+    const e_date = parseLocalDate(originalEndStr);
+    task.start = formatDate(new Date(s.getTime() + daysShift * dayMs));
+    task.end = formatDate(new Date(e_date.getTime() + daysShift * dayMs));
+  } else if (dragType === 'left') {
+    const newDate = new Date(parseLocalDate(originalStartStr).getTime() + daysShift * dayMs);
+    if (newDate <= parseLocalDate(task.end)) task.start = formatDate(newDate);
+  } else if (dragType === 'right') {
+    const newDate = new Date(parseLocalDate(originalEndStr).getTime() + daysShift * dayMs);
+    if (newDate >= parseLocalDate(task.start)) task.end = formatDate(newDate);
+  }
+  renderAll();
+}
+
+function stopDrag(e) {
+  if (dragType === 'move' && !hasMoved) {
+    showBarMenu(e, dragTaskIndex);
+  }
+  isDragging = false;
+  document.removeEventListener('mousemove', handleDrag);
+  document.removeEventListener('mouseup', stopDrag);
+}
+
+function renderChartOnly() {
+  const validTasks = tasks.filter(t => t.start && t.end);
+  if (!validTasks.length) { document.getElementById("chart").innerHTML = ""; return; }
+
+  const dates = validTasks.flatMap(t => [parseLocalDate(t.start), parseLocalDate(t.end)]);
+  const minDate = new Date(Math.min(...dates));
+  minDate.setDate(minDate.getDate() - 5);
+  currentMinDate = minDate;
+  const maxDate = new Date(Math.max(...dates));
+
+  const totalDays = renderDates(minDate, maxDate);
+  const chart = document.getElementById("chart");
+  chart.innerHTML = "";
+
+  for (let i = 0; i < totalDays; i++) {
+    const date = new Date(minDate.getTime() + i * dayMs);
+    if (date.getDay() === 0 || date.getDay() === 6) {
+      const col = document.createElement("div");
+      col.className = "weekend-column";
+      col.style.left = (i * pxPerDay + labelWidth) + "px";
+      col.style.width = pxPerDay + "px";
+      chart.appendChild(col);
+    }
+  }
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  if (today >= minDate) {
+    const col = document.createElement("div");
+    col.className = "today-column";
+    col.style.left = ((today - minDate) / dayMs) * pxPerDay + labelWidth + "px";
+    col.style.width = pxPerDay + "px";
+    chart.appendChild(col);
+  }
+
+  tasks.forEach((t, i) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.dataset.index = i;
+
+    const labelContainer = document.createElement("div");
+    labelContainer.className = "label-container";
+    if (t.linked) labelContainer.style.paddingLeft = "25px";
+
+    const handle = document.createElement("div");
+    handle.className = "drag-handle";
+    handle.innerHTML = Array(8).fill('<div class="dot"></div>').join('');
+
+    // Enable row dragging only from the handle
+    handle.onmousedown = (e) => {
+      e.stopPropagation();
+      row.draggable = true;
+    };
+
+    row.ondragstart = (e) => {
+      draggedIndex = i;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    };
+    row.ondragend = () => {
+      row.classList.remove('dragging');
+      row.draggable = false;
+      draggedIndex = null;
+    };
+    row.ondragover = (e) => {
+      e.preventDefault();
+      if (draggedIndex !== null && draggedIndex !== i) row.classList.add('drag-over');
+    };
+    row.ondragleave = () => row.classList.remove('drag-over');
+    row.ondrop = (e) => {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      const targetIndex = i;
+      if (draggedIndex !== null && draggedIndex !== targetIndex) {
+        const item = tasks.splice(draggedIndex, 1)[0];
+        tasks.splice(targetIndex, 0, item);
+        draggedIndex = null;
+        renderAll();
+      }
+    };
+    
+    const label = document.createElement("div");
+    label.className = "label";
+    label.contentEditable = "true";
+    label.textContent = t.name;
+    label.oninput = (e) => { tasks[i].name = e.target.textContent; renderTable(); };
+    label.onmousedown = (e) => { e.stopPropagation(); row.draggable = false; };
+
+    labelContainer.append(handle, label);
+
+    const start = parseLocalDate(t.start);
+    const end = parseLocalDate(t.end);
+    const leftPos = ((start - minDate) / dayMs) * pxPerDay + labelWidth;
+    const barWidth = Math.max(pxPerDay, ((end - start) / dayMs + 1) * pxPerDay);
+
+    if (t.linked && i > 0) {
+        const pEnd = parseLocalDate(tasks[i-1].end);
+        let anchorX = (start >= pEnd) ? (((pEnd - minDate) / dayMs + 1) * pxPerDay + labelWidth) : (((parseLocalDate(tasks[i-1].start) - minDate) / dayMs) * pxPerDay + labelWidth);
+        const connector = document.createElement("div");
+        connector.className = "connector";
+        connector.style.left = Math.min(anchorX, leftPos) + "px";
+        connector.style.top = (i * 40 - 20) + "px";
+        connector.style.width = Math.abs(leftPos - anchorX) + "px";
+        connector.style.height = "40px";
+        if (leftPos < anchorX) { connector.style.borderLeft = "none"; connector.style.borderRight = "2px solid #ccc"; }
+        chart.appendChild(connector);
+    }
+
+    const bar = document.createElement("div");
+    bar.className = `bar ${t.linked ? 'linked' : ''}`;
+    bar.style.left = leftPos + "px";
+    bar.style.width = barWidth + "px";
+    bar.onmousedown = (e) => initDrag(e, i, 'move'); // UPDATE 2: Drag entire bar
+
+    const progressFill = document.createElement("div");
+    progressFill.className = "bar-progress";
+    progressFill.style.width = (t.progress || 0) + "%";
+    
+    const leftH = document.createElement("div"); leftH.className = "resize-handle"; leftH.onmousedown = (e) => initDrag(e, i, 'left');
+    const rightH = document.createElement("div"); rightH.className = "resize-handle"; rightH.onmousedown = (e) => initDrag(e, i, 'right');
+
+    bar.append(progressFill, leftH, rightH);
+    row.append(labelContainer, bar);
+    chart.appendChild(row);
+  });
+}
+
+function renderAll() { renderTable(); renderChartOnly(); }
+
+function printChart() {
+  const timeline = document.getElementById('timeline');
+  // Measure the actual rendered content width (date header is widest)
+  const monthsDiv = document.querySelector('.months');
+  const contentWidth = monthsDiv ? monthsDiv.scrollWidth : timeline.scrollWidth;
+
+  // A4 landscape printable width in px at 96dpi ≈ 1052px (297mm); use window width as fallback
+  const printWidth = 1052;
+  const scale = Math.min(1, printWidth / contentWidth);
+
+  // Inject scale on the timeline element so the @media print rule picks it up
+  timeline.style.transform = `scale(${scale})`;
+  timeline.style.width = (contentWidth) + 'px';
+
+  window.print();
+
+  // Restore after print dialog closes
+  timeline.style.transform = '';
+  timeline.style.width = '';
+}
+
+function exportData() {
+  const data = { title: document.getElementById("mainTitle").innerText.trim(), tasks: tasks };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${data.title.replace(/\s+/g, '_')}.json`;
+  a.click();
+}
+
+function importData() {
+  const input = document.getElementById("fileInput");
+  input.click();
+  input.onchange = () => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const imported = JSON.parse(e.target.result);
+      if (imported.title) document.getElementById("mainTitle").innerText = imported.title;
+      tasks = imported.tasks || imported;
+      renderAll();
+    };
+    reader.readAsText(input.files[0]);
+  };
+}
+
+renderAll();
+</script>
+</body>
+</html>

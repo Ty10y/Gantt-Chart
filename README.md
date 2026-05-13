@@ -1,6 +1,6 @@
 # Gantt Chart Editor
 
-A lightweight, interactive Gantt chart that runs entirely in a single HTML file — no install, no server, no dependencies. Open `index.html` in any modern browser and start planning.
+A lightweight, interactive Gantt chart that runs entirely in a single HTML file — no install, no server, no dependencies. Open `index.html` <https://ty10y.github.io/Gantt-Chart/> in any modern browser and start planning.
 
 ---
 

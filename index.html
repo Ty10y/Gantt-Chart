@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Editable Gantt Chart v5</title>
+<title>Editable Gantt Chart</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   body { font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; color: #333; line-height: 1.6; }
   
@@ -21,7 +22,7 @@
 
   table { border-collapse: collapse; width: 100%; margin-bottom: 20px; background: #fff; }
   th, td { border-bottom: 1px solid #eee; padding: 12px 8px; text-align: left; }
-  th { background: #fafafa; font-weight: 600; color: #666; font-size: 0.9em; text-transform: uppercase; }
+  th { background: #eef0f2; font-weight: 600; color: #555; font-size: 0.9em; text-transform: uppercase; }
   
   input { 
     width: 100%; 
@@ -64,12 +65,13 @@
     cursor: pointer; 
     border: 1px solid #ddd; 
     background: #fff; 
-    border-radius: 4px;
+    border-radius: 6px;
     font-size: 14px;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   }
   button:hover { background: #f5f5f5; border-color: #bbb; }
   
@@ -79,6 +81,7 @@
     color: white; 
     border-color: #4f8df5; 
     font-weight: 500;
+    box-shadow: 0 1px 3px rgba(79, 141, 245, 0.35);
   }
   .btn-primary:hover { background: #3b79e1; }
 
@@ -103,32 +106,92 @@
 
   .hidden { display: none; }
 
-  #timeline { border: 1px solid #eee; border-radius: 8px; overflow-x: auto; position: relative; background: #fff; user-select: none; }
-  #dateHeader { position: sticky; top: 0; background: #fff; z-index: 30; border-bottom: 1px solid #eee; }
+  #timeline { border: 1px solid #e0e0e0; border-radius: 10px; overflow-x: auto; position: relative; background: #fff; user-select: none; }
+  #dateHeader { position: sticky; top: 0; background: #fff; z-index: 10; border-bottom: 1px solid #eee; }
 
   .months, .days { position: relative; height: 28px; white-space: nowrap; }
   .month { position: absolute; height: 28px; border-right: 1px solid #eee; font-size: 11px; font-weight: bold; text-align: center; line-height: 28px; color: #555; }
-  .day { position: absolute; height: 28px; border-right: 1px solid #f9f9f9; font-size: 10px; text-align: center; line-height: 28px; color: #999; }
+  .day { position: absolute; height: 28px; border-right: 1px solid #f2f2f2; font-size: 10px; text-align: center; line-height: 28px; color: #888; }
 
-  .weekend-header { background: #f4f4f4; color: #bbb; }
-  .today-header { background: rgba(255, 215, 0, 0.2); color: #000; font-weight: bold; }
+  .weekend-header { background: #e6e9ec; color: #999; }
+  .today-header { background: rgba(255, 196, 0, 0.3); color: #000; font-weight: bold; }
+
+  /* Sits over the blank corner of the header, above where the frozen task-name
+     column lives. Zero net height (via the negative margin) so it doesn't push
+     .months/.days down; sticky + left:0 keeps it pinned during horizontal scroll. */
+  .task-name-header {
+    position: sticky;
+    left: 0;
+    z-index: 11;
+    height: 56px;
+    margin-bottom: -56px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding-left: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    background: #eef0f2;
+    border-right: 1px solid #ddd;
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.15);
+  }
 
   #chart { position: relative; min-height: 300px; white-space: nowrap; padding-bottom: 20px; }
   .row { position: relative; height: 40px; border-bottom: 1px solid #f9f9f9; display: flex; align-items: center; transition: background 0.1s; }
+  .row:hover { background: #f7f8fa; }
 
-  /* UPDATE 1: Sticky Label Container */
-  .label-container {
+  /* Opaque panel spanning the full frozen-column width (0 to the divider) for
+     each row, so bars that have scrolled underneath the label column are fully
+     hidden rather than peeking out around/behind the label text itself. Zero
+     net width (via the negative margin) so it doesn't push the label over. A
+     faint shadow along its right edge reads as a panel floating over the
+     timeline, reinforcing that it's pinned in place. */
+  .frozen-bg {
     position: sticky;
     left: 0;
-    z-index: 25;
-    width: 200px;
-    height: 100%;
+    top: 0;
+    height: 40px;
+    z-index: 5;
+    flex-shrink: 0;
+    background: #fff;
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.15);
+    pointer-events: none;
+  }
+  .row:hover .frozen-bg { background: #f7f8fa; }
+
+  .label-container {
+    position: sticky;
+    left: 10px;
+    margin-left: 10px;
+    z-index: 5;
+    width: 140px;
     display: flex;
     align-items: center;
     background: white;
-    border-right: 1px solid #eee;
-    padding-left: 10px;
-    box-sizing: border-box;
+  }
+
+  .col-divider {
+    position: sticky;
+    width: 8px;
+    height: 40px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    z-index: 6;
+    display: flex;
+    justify-content: center;
+    touch-action: none;
+  }
+  .col-divider-line {
+    width: 2px;
+    height: 100%;
+    background: #e0e0e0;
+    transition: background 0.15s;
+  }
+  .col-divider:hover .col-divider-line,
+  .col-divider.resizing .col-divider-line {
+    background: #4f8df5;
   }
 
   .label {
@@ -154,7 +217,7 @@
     border-radius: 12px;
     z-index: 4;
     box-shadow: 0 2px 4px rgba(79, 141, 245, 0.1);
-    cursor: move; /* UPDATE 2: Visual cue for dragging */
+    cursor: grab;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -175,6 +238,7 @@
 
   .bar.linked { height: 12px; border-radius: 6px; border-color: #888; }
   .bar.linked .bar-progress { background: #888; }
+  .bar:active { cursor: grabbing; }
   
   .resize-handle {
     width: 12px;
@@ -185,24 +249,24 @@
   }
   .resize-handle:hover { background: rgba(0,0,0,0.05); }
 
-  .connector { position: absolute; border-left: 2px solid #ccc; border-bottom: 2px solid #ccc; z-index: 1; pointer-events: none; }
+  .connector { position: absolute; border-left: 2px solid #a8a8a8; border-bottom: 2px solid #a8a8a8; z-index: 1; pointer-events: none; }
 
   .today-column {
     position: absolute;
     top: 0;
     bottom: 0;
-    background: rgba(255, 215, 0, 0.1);
+    background: rgba(255, 196, 0, 0.18);
     z-index: 1;
     pointer-events: none;
-    border-left: 1px dashed gold;
-    border-right: 1px dashed gold;
+    border-left: 1px dashed #d4a900;
+    border-right: 1px dashed #d4a900;
   }
 
   .weekend-column {
     position: absolute;
     top: 0;
     bottom: 0;
-    background: #f9f9f9;
+    background: #e9ebee;
     z-index: 0;
     pointer-events: none;
   }
@@ -239,44 +303,84 @@
 
   svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-  /* Print Styles */
+  /* --- PRINT STYLES START HERE --- */
   @media print {
-    @page { size: landscape; margin: 0; }
+    @page {
+      size: landscape;
+      margin: 1cm;
+    }
 
     body {
-      margin: 0; padding: 0; background: white;
+      margin: 0;
+      padding: 0;
+      background: white;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
 
-    /* Hide everything except the timeline */
-    body > *:not(#timeline) { display: none !important; }
-    #mainTitle { display: none !important; }
+    /* Hide UI Elements */
+    #taskSection, 
+    .btn-group, 
+    .drag-handle, 
+    .resize-handle, 
+    .col-divider,
+    .action-btn, 
+    .bar-menu, 
+    #fileInput {
+      display: none !important;
+    }
 
+    /* Chart Clean Up */
     #timeline {
-      border: none !important;
+      border: none;
       overflow: visible !important;
-      /* scale is injected by printChart() at runtime */
-      transform-origin: top left;
+      width: 100%;
+    }
+    
+    #chart {
+      overflow: visible !important;
     }
 
-    #chart { overflow: visible !important; }
+    /* Make text black */
+    #mainTitle, .label, .month, .day {
+      color: #000 !important;
+    }
 
+    /* Vibrant Colors for Print */
+    .bar {
+      border: 2px solid #004085 !important; /* Dark Blue Border */
+      box-shadow: none !important;
+      background: #fff !important;
+    }
+    
+    .bar-progress {
+      background: #0069d9 !important; /* Vibrant Blue Fill */
+    }
+
+    .bar.linked {
+      border-color: #333 !important;
+    }
+    .bar.linked .bar-progress {
+      background: #444 !important;
+    }
+
+    .weekend-column {
+      background: #f0f0f0 !important;
+    }
+
+    .today-column {
+      background: rgba(255, 200, 0, 0.2) !important;
+      border-right: none !important;
+    }
+
+    /* Adjust label container since drag handle is gone */
     .label-container {
-      position: relative !important;
-      border-right: 1px solid #ccc;
+      left: 0;
+      margin-left: 0 !important;
+      padding-left: 0 !important;
     }
-
-    .drag-handle, .resize-handle { display: none !important; }
-
-    .bar { border: 2px solid #004085 !important; background: #fff !important; box-shadow: none !important; }
-    .bar-progress { background: #0069d9 !important; }
-    .bar.linked { border-color: #333 !important; }
-    .bar.linked .bar-progress { background: #444 !important; }
-    .weekend-column { background: #f0f0f0 !important; }
-    .today-column { background: rgba(255,200,0,0.2) !important; border-right: none !important; }
-    .label-container { left: 0; padding-left: 0 !important; }
   }
+  /* --- PRINT STYLES END HERE --- */
 </style>
 </head>
 <body>
@@ -301,16 +405,30 @@
 
 <div class="btn-group">
   <button class="btn-primary" onclick="addTask()">+ Add Task</button>
-  <button onclick="toggleTasks()" data-tooltip="Toggle List"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg></button>
-  <button onclick="exportData()" data-tooltip="Export JSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8V3"></path></svg></button>
-  <button onclick="importData()" data-tooltip="Import JSON"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg></button>
-  <button onclick="printChart()" data-tooltip="Print Chart"><svg viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1-2 2h-2M6 14h12v8H6z"></path></svg></button>
+  
+  <button onclick="toggleTasks()" data-tooltip="Toggle List">
+    <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>
+  </button>
+  
+  <button onclick="exportData()" data-tooltip="Export JSON">
+    <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8V3"></path></svg>
+  </button>
+  
+  <button onclick="importData()" data-tooltip="Import JSON">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+  </button>
+
+  <!-- EXPORT BUTTON -->
+  <button onclick="showExportMenu(event)" data-tooltip="Export Chart">
+    <svg viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"></path></svg>
+  </button>
 </div>
 
 <input id="fileInput" type="file" accept=".json" hidden>
 
 <div id="timeline">
   <div id="dateHeader">
+    <div id="taskNameHeader" class="task-name-header">Task Name</div>
     <div class="months"></div>
     <div class="days"></div>
   </div>
@@ -319,7 +437,9 @@
 
 <script>
 const pxPerDay = 24;
-const labelWidth = 200;
+let labelOffset = 150;
+const MIN_LABEL_OFFSET = 80;
+const MAX_LABEL_OFFSET = 400;
 const dayMs = 86400000;
 
 let tasks = [
@@ -329,16 +449,20 @@ let tasks = [
   { name: "Tooling Fabrication", start: "2026-02-13", end: "2026-02-27", progress: 0, linked: false }
 ];
 
-let draggedIndex = null;
+// Shift the example tasks (as a whole) so the timeline kicks off today,
+// preserving every task's original duration and the gaps between them.
+tasks = shiftTasksToStartToday(tasks);
+
+let draggedEl = null;
 let currentMinDate = null;
 let isDragging = false;
+let dragMoved = false;
 let dragType = null;
 let dragTaskIndex = null;
 let dragStartX = 0;
-let originalStartStr = "";
-let originalEndStr = "";
+let dragOriginalStart = "";
+let dragOriginalEnd = "";
 let activeMenu = null;
-let hasMoved = false;
 
 function parseLocalDate(dateStr) {
   if (!dateStr) return null;
@@ -353,13 +477,28 @@ function formatDate(date) {
   return `${y}-${m}-${d}`;
 }
 
+function shiftTasksToStartToday(taskList) {
+  if (!taskList.length) return taskList;
+  const firstStart = parseLocalDate(taskList[0].start);
+  if (!firstStart) return taskList;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const shiftDays = Math.round((today - firstStart) / dayMs);
+  if (shiftDays === 0) return taskList;
+  return taskList.map(t => ({
+    ...t,
+    start: t.start ? formatDate(new Date(parseLocalDate(t.start).getTime() + shiftDays * dayMs)) : t.start,
+    end: t.end ? formatDate(new Date(parseLocalDate(t.end).getTime() + shiftDays * dayMs)) : t.end
+  }));
+}
+
 function toggleTasks() {
   document.getElementById("taskSection").classList.toggle("hidden");
 }
 
 function addTask() {
-  const lastDate = tasks.length > 0 ? tasks[tasks.length-1].end : new Date().toISOString().split('T')[0];
-  tasks.push({ name: "New Task", start: lastDate, end: lastDate, progress: 0, linked: false });
+  const today = formatDate(new Date());
+  tasks.push({ name: "New Task", start: today, end: today, progress: 0, linked: false });
   renderAll();
 }
 
@@ -416,12 +555,468 @@ function setLinkStatus(index, status) {
   renderAll();
 }
 
+// ============================================================
+// Export: PDF / PNG
+//
+// Printing this chart through the browser's print dialog is unreliable -
+// wide date ranges get cut off, spread across pages unpredictably, or get
+// shrunk illegibly. Instead we draw the chart onto a <canvas> ourselves
+// (independent of the on-screen DOM, so sticky/scroll positioning can't
+// interfere) and offer three outputs:
+//   - Fit to One Page: the whole chart shrunk to fit on a single page
+//   - Full Size, Multiple Pages: tiled at full readable size across as
+//     many pages as needed, like a spreadsheet's "print titles" - every
+//     page repeats the task-name column and date header so it stands on
+//     its own
+//   - Download as Image: one full-resolution PNG, no page constraints
+// ============================================================
+
+const BASE_PX_PER_DAY = 24;
+const BASE_ROW_H = 40;
+const BASE_HEADER_H = 56;
+const EXPORT_OVERSAMPLE = 2; // render at 2x so the embedded raster stays crisp when printed/zoomed
+const PAGE_W_IN = 11, PAGE_H_IN = 8.5; // US Letter, landscape (narrower than A4 landscape, so content sized to this fits either)
+const PAGE_MARGIN_IN = 0.4;
+const CSS_PX_PER_IN = 96;
+const PAGE_W_PX = (PAGE_W_IN - PAGE_MARGIN_IN * 2) * CSS_PX_PER_IN;
+const PAGE_H_PX = (PAGE_H_IN - PAGE_MARGIN_IN * 2) * CSS_PX_PER_IN;
+
+function showExportMenu(e) {
+  e.stopPropagation();
+  closeBarMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "bar-menu";
+  menu.style.left = `${e.clientX}px`;
+  menu.style.top = `${e.clientY}px`;
+  menu.innerHTML = `
+    <div class="bar-menu-item" onclick="exportFitToOnePage()">Fit to One Page (PDF)</div>
+    <div class="bar-menu-item" onclick="exportMultiPage()">Full Size, Multiple Pages (PDF)</div>
+    <div class="bar-menu-item" onclick="exportPNG()">Download as Image (PNG)</div>
+  `;
+  document.body.appendChild(menu);
+  activeMenu = menu;
+
+  setTimeout(() => {
+    document.addEventListener('click', closeBarMenu, { once: true });
+  }, 10);
+}
+
+function getChartTitle() {
+  const raw = (document.getElementById('mainTitle').textContent || '').trim() || 'Gantt Chart';
+  const clean = raw.replace(/[^a-z0-9\- ]/gi, '').trim().replace(/\s+/g, '-');
+  return clean || 'gantt-chart';
+}
+
+// Renderable rows in on-screen order, keeping each entry's original index
+// (needed to look up a linked task's parent exactly like the on-screen
+// connector logic does).
+function getExportRowEntries() {
+  return tasks.map((t, i) => ({ t, i })).filter(e => e.t.start && e.t.end);
+}
+
+function getExportDateRange() {
+  const rowEntries = getExportRowEntries();
+  if (!rowEntries.length) return null;
+  const dates = rowEntries.flatMap(e => [parseLocalDate(e.t.start), parseLocalDate(e.t.end)]);
+  const minDate = new Date(Math.min(...dates));
+  minDate.setDate(minDate.getDate() - 2);
+  const maxDate = new Date(Math.max(...dates));
+  maxDate.setDate(maxDate.getDate() + 2);
+  const totalDays = Math.round((maxDate - minDate) / dayMs) + 1;
+  return { minDate, totalDays, rowEntries };
+}
+
+function pathRoundedRect(ctx, x, y, w, h, r) {
+  const rad = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, rad);
+  } else {
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  }
+}
+
+function truncateToWidth(ctx, text, maxWidth) {
+  if (maxWidth <= 0) return '';
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (ctx.measureText(text.slice(0, mid) + '…').width <= maxWidth) lo = mid; else hi = mid - 1;
+  }
+  return lo > 0 ? text.slice(0, lo) + '…' : '';
+}
+
+// Draws one page: a [dayStart, dayStart+dayCount) date window x
+// [rowStart, rowStart+rowCount) row window, at the given scale (1 = full
+// on-screen size). Every page redraws its own header and task-name column
+// so it's self-contained.
+function drawGanttPage({ minDate, dayStart, dayCount, rowEntries, rowStart, rowCount, labelWidthBase, scale }) {
+  const pxPerDayS = BASE_PX_PER_DAY * scale;
+  const rowHS = BASE_ROW_H * scale;
+  const headerHS = BASE_HEADER_H * scale;
+  const labelWS = labelWidthBase * scale;
+  const monthHS = headerHS * (28 / 56);
+  const dayRowHS = headerHS - monthHS;
+  const f = (px) => Math.max(6, Math.round(px * scale));
+
+  const cw = labelWS + dayCount * pxPerDayS;
+  const ch = headerHS + rowCount * rowHS;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(cw * EXPORT_OVERSAMPLE));
+  canvas.height = Math.max(1, Math.ceil(ch * EXPORT_OVERSAMPLE));
+  const ctx = canvas.getContext('2d');
+  ctx.scale(EXPORT_OVERSAMPLE, EXPORT_OVERSAMPLE);
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cw, ch);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // weekend / today shading, spanning header + full row body
+  for (let d = 0; d < dayCount; d++) {
+    const date = new Date(minDate.getTime() + (dayStart + d) * dayMs);
+    const x = labelWS + d * pxPerDayS;
+    const dow = date.getDay();
+    if (dow === 0 || dow === 6) {
+      ctx.fillStyle = '#e6e9ec';
+      ctx.fillRect(x, monthHS, pxPerDayS, dayRowHS);
+      ctx.fillStyle = '#e9ebee';
+      ctx.fillRect(x, headerHS, pxPerDayS, rowCount * rowHS);
+    }
+    if (+date === +today) {
+      ctx.fillStyle = 'rgba(255,196,0,0.3)';
+      ctx.fillRect(x, monthHS, pxPerDayS, dayRowHS);
+      ctx.fillStyle = 'rgba(255,196,0,0.18)';
+      ctx.fillRect(x, headerHS, pxPerDayS, rowCount * rowHS);
+    }
+  }
+
+  // month bar
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#555';
+  let currentMonth = -1, monthStartX = labelWS;
+  const monthBoxes = [];
+  for (let d = 0; d < dayCount; d++) {
+    const date = new Date(minDate.getTime() + (dayStart + d) * dayMs);
+    const x = labelWS + d * pxPerDayS;
+    if (date.getMonth() !== currentMonth) {
+      if (currentMonth !== -1) monthBoxes.push({ x: monthStartX, w: x - monthStartX, label: monthLabelFor(minDate, dayStart, d - 1) });
+      currentMonth = date.getMonth();
+      monthStartX = x;
+    }
+  }
+  monthBoxes.push({ x: monthStartX, w: (labelWS + dayCount * pxPerDayS) - monthStartX, label: monthLabelFor(minDate, dayStart, dayCount - 1) });
+  ctx.font = `bold ${f(11)}px Arial, sans-serif`;
+  monthBoxes.forEach(mb => {
+    ctx.fillStyle = '#555';
+    ctx.fillText(mb.label, mb.x + mb.w / 2, monthHS / 2 + 1);
+    ctx.strokeStyle = '#eeeeee';
+    ctx.beginPath();
+    ctx.moveTo(mb.x + mb.w - 0.5, 0);
+    ctx.lineTo(mb.x + mb.w - 0.5, monthHS);
+    ctx.stroke();
+  });
+
+  // day numbers
+  ctx.font = `${f(10)}px Arial, sans-serif`;
+  for (let d = 0; d < dayCount; d++) {
+    const date = new Date(minDate.getTime() + (dayStart + d) * dayMs);
+    const x = labelWS + d * pxPerDayS;
+    const dow = date.getDay();
+    const isToday = +date === +today;
+    ctx.font = isToday ? `bold ${f(10)}px Arial, sans-serif` : `${f(10)}px Arial, sans-serif`;
+    ctx.fillStyle = isToday ? '#000' : (dow === 0 || dow === 6 ? '#999' : '#888');
+    ctx.fillText(String(date.getDate()), x + pxPerDayS / 2, monthHS + dayRowHS / 2 + 1);
+    ctx.strokeStyle = '#f2f2f2';
+    ctx.beginPath();
+    ctx.moveTo(x + pxPerDayS - 0.5, monthHS);
+    ctx.lineTo(x + pxPerDayS - 0.5, headerHS);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#eeeeee';
+  ctx.beginPath();
+  ctx.moveTo(0, headerHS - 0.5);
+  ctx.lineTo(cw, headerHS - 0.5);
+  ctx.stroke();
+
+  // row separators, connectors, bars - clipped to the chart body so nothing
+  // (a bar, a connector) can bleed into the header or off a page edge
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(labelWS, headerHS, dayCount * pxPerDayS, rowCount * rowHS);
+  ctx.clip();
+
+  for (let r = 0; r < rowCount; r++) {
+    const globalRow = rowStart + r;
+    const entry = rowEntries[globalRow];
+    const t = entry.t;
+    const y = headerHS + r * rowHS;
+
+    if (t.linked && globalRow > 0 && r > 0) {
+      const parent = rowEntries[globalRow - 1].t;
+      const pStart = parseLocalDate(parent.start), pEnd = parseLocalDate(parent.end);
+      const start = parseLocalDate(t.start);
+      const leftPos = labelWS + (((start - minDate) / dayMs) - dayStart) * pxPerDayS;
+      const anchorX = start >= pEnd
+        ? labelWS + ((((pEnd - minDate) / dayMs) + 1) - dayStart) * pxPerDayS
+        : labelWS + (((pStart - minDate) / dayMs) - dayStart) * pxPerDayS;
+      const midY = y + rowHS / 2;
+      ctx.strokeStyle = '#a8a8a8';
+      ctx.lineWidth = 2 * scale;
+      ctx.beginPath();
+      ctx.moveTo(anchorX, midY - rowHS);
+      ctx.lineTo(anchorX, midY);
+      ctx.lineTo(leftPos, midY);
+      ctx.stroke();
+    }
+
+    const start = parseLocalDate(t.start), end = parseLocalDate(t.end);
+    const leftPos = labelWS + (((start - minDate) / dayMs) - dayStart) * pxPerDayS;
+    const barWidth = Math.max(pxPerDayS, (((end - start) / dayMs) + 1) * pxPerDayS);
+    if (leftPos + barWidth > labelWS && leftPos < cw) {
+      const barH = (t.linked ? 12 : 24) * scale;
+      const barY = y + (rowHS - barH) / 2;
+      const radius = barH / 2;
+
+      pathRoundedRect(ctx, leftPos, barY, barWidth, barH, radius);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.save();
+      pathRoundedRect(ctx, leftPos, barY, barWidth, barH, radius);
+      ctx.clip();
+      const progW = barWidth * (Math.min(100, Math.max(0, t.progress || 0)) / 100);
+      ctx.fillStyle = t.linked ? '#888' : '#4f8df5';
+      ctx.fillRect(leftPos, barY, progW, barH);
+      ctx.restore();
+      pathRoundedRect(ctx, leftPos, barY, barWidth, barH, radius);
+      ctx.lineWidth = 2 * scale;
+      ctx.strokeStyle = t.linked ? '#888' : '#4f8df5';
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = '#f9f9f9';
+    ctx.beginPath();
+    ctx.moveTo(labelWS, y + rowHS - 0.5);
+    ctx.lineTo(cw, y + rowHS - 0.5);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // frozen task-name column, redrawn on every page
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, headerHS, labelWS, rowCount * rowHS);
+  ctx.textAlign = 'left';
+  for (let r = 0; r < rowCount; r++) {
+    const entry = rowEntries[rowStart + r];
+    const t = entry.t;
+    const y = headerHS + r * rowHS;
+    const textX = (20 + (t.linked ? 15 : 0)) * scale;
+    ctx.font = `500 ${f(12)}px Arial, sans-serif`;
+    ctx.fillStyle = '#333';
+    ctx.fillText(truncateToWidth(ctx, t.name || '', labelWS - textX - 8 * scale), textX, y + rowHS / 2 + 1);
+    ctx.strokeStyle = '#f9f9f9';
+    ctx.beginPath();
+    ctx.moveTo(0, y + rowHS - 0.5);
+    ctx.lineTo(labelWS, y + rowHS - 0.5);
+    ctx.stroke();
+  }
+
+  // task-name column header title + divider
+  ctx.fillStyle = '#eef0f2';
+  ctx.fillRect(0, 0, labelWS, headerHS);
+  ctx.font = `bold ${f(11)}px Arial, sans-serif`;
+  ctx.fillStyle = '#555';
+  ctx.fillText('TASK NAME', 20 * scale, headerHS / 2 + 1);
+  ctx.strokeStyle = '#dddddd';
+  ctx.beginPath();
+  ctx.moveTo(labelWS - 0.5, 0);
+  ctx.lineTo(labelWS - 0.5, ch);
+  ctx.stroke();
+
+  // page frame
+  ctx.strokeStyle = '#dddddd';
+  ctx.strokeRect(0.5, 0.5, cw - 1, ch - 1);
+
+  return canvas;
+}
+
+function monthLabelFor(minDate, dayStart, dOffset) {
+  const date = new Date(minDate.getTime() + (dayStart + Math.max(0, dOffset)) * dayMs);
+  return date.toLocaleString('default', { month: 'short', year: 'numeric' });
+}
+
+function canvasesToPDF(canvases, filename) {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert("The PDF library hasn't finished loading yet (it loads from the internet the first time you export). Please wait a moment and try again, or use \"Download as Image\" instead.");
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'in', format: [PAGE_W_IN, PAGE_H_IN] });
+  const availW = PAGE_W_IN - PAGE_MARGIN_IN * 2;
+  const availH = PAGE_H_IN - PAGE_MARGIN_IN * 2;
+
+  canvases.forEach((canvas, idx) => {
+    if (idx > 0) doc.addPage([PAGE_W_IN, PAGE_H_IN], 'landscape');
+    const aspect = canvas.width / canvas.height;
+    let w = availW, h = w / aspect;
+    if (h > availH) { h = availH; w = h * aspect; }
+    const x = PAGE_MARGIN_IN + (availW - w) / 2;
+    const y = PAGE_MARGIN_IN + (availH - h) / 2;
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, w, h);
+  });
+
+  doc.save(filename);
+}
+
+function exportFitToOnePage() {
+  closeBarMenu();
+  const range = getExportDateRange();
+  if (!range) { alert('Add at least one task with dates before exporting.'); return; }
+  const { minDate, totalDays, rowEntries } = range;
+  const labelW = Math.max(labelOffset, 150);
+
+  const naturalW = labelW + totalDays * BASE_PX_PER_DAY;
+  const naturalH = BASE_HEADER_H + rowEntries.length * BASE_ROW_H;
+  const scale = Math.min(1, PAGE_W_PX / naturalW, PAGE_H_PX / naturalH);
+
+  const canvas = drawGanttPage({
+    minDate, dayStart: 0, dayCount: totalDays,
+    rowEntries, rowStart: 0, rowCount: rowEntries.length,
+    labelWidthBase: labelW, scale
+  });
+
+  canvasesToPDF([canvas], `${getChartTitle()}.pdf`);
+}
+
+function exportMultiPage() {
+  closeBarMenu();
+  const range = getExportDateRange();
+  if (!range) { alert('Add at least one task with dates before exporting.'); return; }
+  const { minDate, totalDays, rowEntries } = range;
+  const labelW = Math.max(labelOffset, 150);
+  const rowCount = rowEntries.length;
+
+  const daysPerPage = Math.max(1, Math.floor((PAGE_W_PX - labelW) / BASE_PX_PER_DAY));
+  const rowsPerPage = Math.max(1, Math.floor((PAGE_H_PX - BASE_HEADER_H) / BASE_ROW_H));
+  const pageCols = Math.ceil(totalDays / daysPerPage);
+  const pageRows = Math.ceil(rowCount / rowsPerPage);
+
+  const canvases = [];
+  for (let pr = 0; pr < pageRows; pr++) {
+    const rowStart = pr * rowsPerPage;
+    const rCount = Math.min(rowsPerPage, rowCount - rowStart);
+    for (let pc = 0; pc < pageCols; pc++) {
+      const dayStart = pc * daysPerPage;
+      const dCount = Math.min(daysPerPage, totalDays - dayStart);
+      canvases.push(drawGanttPage({
+        minDate, dayStart, dayCount: dCount,
+        rowEntries, rowStart, rowCount: rCount,
+        labelWidthBase: labelW, scale: 1
+      }));
+    }
+  }
+
+  canvasesToPDF(canvases, `${getChartTitle()}.pdf`);
+}
+
+function exportPNG() {
+  closeBarMenu();
+  const range = getExportDateRange();
+  if (!range) { alert('Add at least one task with dates before exporting.'); return; }
+  const { minDate, totalDays, rowEntries } = range;
+  const labelW = Math.max(labelOffset, 150);
+
+  const canvas = drawGanttPage({
+    minDate, dayStart: 0, dayCount: totalDays,
+    rowEntries, rowStart: 0, rowCount: rowEntries.length,
+    labelWidthBase: labelW, scale: 1
+  });
+
+  const link = document.createElement('a');
+  link.download = `${getChartTitle()}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
 function updateTask(index, field, value) {
   if (field === 'progress') {
     value = Math.min(100, Math.max(0, parseInt(value) || 0));
   }
   tasks[index][field] = value;
   renderChartOnly();
+}
+
+// --- Live drag-to-reorder helpers ---
+// While dragging, the hovered-over row's DOM node is physically relocated
+// (not just re-rendered), so surrounding tasks flow into the open space
+// immediately. A quick FLIP animation smooths that shift into a "nudge".
+//
+// While a row is mid-slide, its animated position can pass back under the
+// (stationary) cursor and fire another dragenter on it, which would
+// re-trigger a swap before the first one settles - causing a rapid
+// back-and-forth flicker. Two guards prevent that: animating rows stop
+// accepting pointer/drag events for the duration of their slide, and a
+// short cooldown after each swap ignores any further reorder triggers
+// until things have visually settled.
+const REORDER_ANIMATION_MS = 150;
+const REORDER_LOCK_MS = REORDER_ANIMATION_MS + 30;
+let reorderLocked = false;
+
+function flipAnimateRows(rows, mutate) {
+  const firstRects = new Map();
+  rows.forEach(r => firstRects.set(r, r.getBoundingClientRect()));
+  mutate();
+  rows.forEach(r => {
+    const first = firstRects.get(r);
+    const last = r.getBoundingClientRect();
+    const dy = first.top - last.top;
+    if (dy) {
+      r.style.transition = 'none';
+      r.style.transform = `translateY(${dy}px)`;
+      r.style.pointerEvents = 'none';
+      requestAnimationFrame(() => {
+        r.style.transition = `transform ${REORDER_ANIMATION_MS}ms ease`;
+        r.style.transform = '';
+      });
+      setTimeout(() => { r.style.pointerEvents = ''; }, REORDER_LOCK_MS);
+    }
+  });
+}
+
+function handleRowDragEnter(container, rowSelector, targetEl) {
+  if (!draggedEl || draggedEl === targetEl || reorderLocked) return;
+  const rows = Array.from(container.querySelectorAll(rowSelector));
+  const draggedPos = rows.indexOf(draggedEl);
+  const targetPos = rows.indexOf(targetEl);
+  if (draggedPos === -1 || targetPos === -1) return;
+  reorderLocked = true;
+  flipAnimateRows(rows, () => {
+    if (draggedPos < targetPos) {
+      container.insertBefore(draggedEl, targetEl.nextSibling);
+    } else {
+      container.insertBefore(draggedEl, targetEl);
+    }
+  });
+  setTimeout(() => { reorderLocked = false; }, REORDER_LOCK_MS);
+}
+
+function finalizeRowOrder(container, rowSelector) {
+  const orderedIndices = Array.from(container.querySelectorAll(rowSelector))
+    .map(el => parseInt(el.dataset.index, 10));
+  tasks = orderedIndices.map(idx => tasks[idx]);
+  draggedEl = null;
+  reorderLocked = false;
+  renderAll();
 }
 
 function renderTable() {
@@ -431,41 +1026,65 @@ function renderTable() {
     const tr = document.createElement("tr");
     tr.dataset.index = i;
     
-    tr.ondragover = (e) => { e.preventDefault(); tr.classList.add('drag-over'); };
-    tr.ondragleave = () => tr.classList.remove('drag-over');
-    tr.ondrop = (e) => {
+    // Table row drop events - reorder live as the dragged row hovers over another
+    tr.ondragover = (e) => e.preventDefault();
+    tr.ondragenter = (e) => {
       e.preventDefault();
-      tr.classList.remove('drag-over');
-      const targetIndex = parseInt(tr.dataset.index);
-      if (draggedIndex !== null && draggedIndex !== targetIndex) {
-        const item = tasks.splice(draggedIndex, 1)[0];
-        tasks.splice(targetIndex, 0, item);
-        renderAll();
-      }
+      handleRowDragEnter(tbody, 'tr', tr);
     };
+    tr.ondrop = (e) => e.preventDefault();
 
+    const dots = Array(8).fill('<div class="dot"></div>').join('');
     const handle = document.createElement("div");
     handle.className = "drag-handle";
-    handle.innerHTML = Array(8).fill('<div class="dot"></div>').join('');
+    handle.innerHTML = dots;
+    
+    // Logic to only enable dragging from handle
     handle.onmousedown = () => { tr.draggable = true; };
     handle.onmouseup = () => { tr.draggable = false; };
     
-    tr.ondragstart = (e) => { draggedIndex = i; tr.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; };
-    tr.ondragend = () => { tr.classList.remove('dragging'); tr.draggable = false; };
+    tr.ondragstart = (e) => {
+      draggedEl = tr;
+      tr.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    };
+    tr.ondragend = () => {
+      tr.classList.remove('dragging');
+      tr.draggable = false;
+      if (draggedEl === tr) finalizeRowOrder(tbody, 'tr');
+    };
 
     tr.innerHTML = `
         <td class="handle-cell"></td>
-        <td style="${t.linked ? 'padding-left: 30px;' : ''}"><input value="${t.name}" oninput="updateTask(${i}, 'name', this.value)"></td>
+        <td style="${t.linked ? 'padding-left: 30px;' : ''}">
+          <input value="${t.name}" oninput="updateTask(${i}, 'name', this.value)">
+        </td>
         <td><input type="date" value="${t.start}" oninput="updateTask(${i}, 'start', this.value)"></td>
         <td><input type="date" value="${t.end}" oninput="updateTask(${i}, 'end', this.value)"></td>
-        <td><div style="display:flex; align-items:center;"><input type="number" min="0" max="100" value="${t.progress || 0}" oninput="updateTask(${i}, 'progress', this.value)" style="width: 60px;"><span style="font-size: 12px; color: #888;">%</span></div></td>
-        <td><div class="order-controls">
+        <td>
+          <div style="display:flex; align-items:center;">
+            <input type="number" min="0" max="100" value="${t.progress || 0}" oninput="updateTask(${i}, 'progress', this.value)" style="width: 60px;">
+            <span style="font-size: 12px; color: #888;">%</span>
+          </div>
+        </td>
+        <td>
+          <div class="order-controls">
             <button class="action-btn" onclick="moveTask(${i}, -1)" ${i === 0 ? 'disabled style="opacity:0.2"' : ''}>▲</button>
             <button class="action-btn" onclick="moveTask(${i}, 1)" ${i === tasks.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
             <button class="action-btn delete-btn" onclick="deleteTask(${i})">✕</button>
-        </div></td>
+          </div>
+        </td>
     `;
     tr.querySelector('.handle-cell').appendChild(handle);
+    
+    // Prevent dragging when interacting with table cells (inputs/buttons)
+    tr.querySelectorAll('td:not(.handle-cell)').forEach(td => {
+      td.onmousedown = (e) => {
+        e.stopPropagation();
+        tr.draggable = false;
+      };
+    });
+
     tbody.appendChild(tr);
   });
 }
@@ -476,8 +1095,10 @@ function renderDates(minDate, maxDate) {
   monthsDiv.innerHTML = "";
   daysDiv.innerHTML = "";
 
+  document.getElementById("taskNameHeader").style.width = labelOffset + "px";
+
   const totalDays = Math.ceil((maxDate - minDate) / dayMs) + 15;
-  const width = totalDays * pxPerDay + labelWidth;
+  const width = totalDays * pxPerDay + labelOffset;
   monthsDiv.style.width = daysDiv.style.width = width + "px";
 
   const today = new Date();
@@ -488,7 +1109,7 @@ function renderDates(minDate, maxDate) {
 
   for (let i = 0; i < totalDays; i++) {
     const date = new Date(minDate.getTime() + i * dayMs);
-    const x = i * pxPerDay + labelWidth;
+    const x = i * pxPerDay + labelOffset;
     const dayOfWeek = date.getDay();
 
     const d = document.createElement("div");
@@ -502,7 +1123,9 @@ function renderDates(minDate, maxDate) {
     daysDiv.appendChild(d);
 
     if (date.getMonth() !== currentMonth) {
-      if (currentMonth !== -1) monthsDiv.lastChild.style.width = (x - monthStartX) + "px";
+      if (currentMonth !== -1) {
+        monthsDiv.lastChild.style.width = (x - monthStartX) + "px";
+      }
       currentMonth = date.getMonth();
       monthStartX = x;
       const m = document.createElement("div");
@@ -512,6 +1135,7 @@ function renderDates(minDate, maxDate) {
       monthsDiv.appendChild(m);
     }
   }
+
   if (monthsDiv.lastChild) monthsDiv.lastChild.style.width = (width - monthStartX) + "px";
   return totalDays;
 }
@@ -519,12 +1143,12 @@ function renderDates(minDate, maxDate) {
 function initDrag(e, index, type) {
   e.stopPropagation();
   isDragging = true;
+  dragMoved = false;
   dragType = type;
   dragTaskIndex = index;
   dragStartX = e.clientX;
-  originalStartStr = tasks[index].start;
-  originalEndStr = tasks[index].end;
-  hasMoved = false;
+  dragOriginalStart = tasks[index].start;
+  dragOriginalEnd = tasks[index].end;
   
   document.addEventListener('mousemove', handleDrag);
   document.addEventListener('mouseup', stopDrag);
@@ -535,37 +1159,86 @@ function handleDrag(e) {
   const deltaX = e.clientX - dragStartX;
   const daysShift = Math.round(deltaX / pxPerDay);
   if (daysShift === 0) return;
-  
-  hasMoved = true;
+
+  const originalStart = parseLocalDate(dragOriginalStart);
+  const originalEnd = parseLocalDate(dragOriginalEnd);
   const task = tasks[dragTaskIndex];
-  
+
   if (dragType === 'move') {
-    const s = parseLocalDate(originalStartStr);
-    const e_date = parseLocalDate(originalEndStr);
-    task.start = formatDate(new Date(s.getTime() + daysShift * dayMs));
-    task.end = formatDate(new Date(e_date.getTime() + daysShift * dayMs));
+    // Whole-bar drag: shift both dates by the same amount, so duration never changes.
+    const newStartStr = formatDate(new Date(originalStart.getTime() + daysShift * dayMs));
+    const newEndStr = formatDate(new Date(originalEnd.getTime() + daysShift * dayMs));
+    if (newStartStr === task.start && newEndStr === task.end) return;
+    task.start = newStartStr;
+    task.end = newEndStr;
+    dragMoved = true;
   } else if (dragType === 'left') {
-    const newDate = new Date(parseLocalDate(originalStartStr).getTime() + daysShift * dayMs);
-    if (newDate <= parseLocalDate(task.end)) task.start = formatDate(newDate);
-  } else if (dragType === 'right') {
-    const newDate = new Date(parseLocalDate(originalEndStr).getTime() + daysShift * dayMs);
-    if (newDate >= parseLocalDate(task.start)) task.end = formatDate(newDate);
+    const newDate = new Date(originalStart.getTime() + daysShift * dayMs);
+    const newDateStr = formatDate(newDate);
+    if (newDateStr === task.start) return;
+    if (newDate <= parseLocalDate(task.end)) {
+      task.start = newDateStr;
+      dragMoved = true;
+    }
+  } else {
+    const newDate = new Date(originalEnd.getTime() + daysShift * dayMs);
+    const newDateStr = formatDate(newDate);
+    if (newDateStr === task.end) return;
+    if (newDate >= parseLocalDate(task.start)) {
+      task.end = newDateStr;
+      dragMoved = true;
+    }
   }
   renderAll();
 }
 
-function stopDrag(e) {
-  if (dragType === 'move' && !hasMoved) {
-    showBarMenu(e, dragTaskIndex);
-  }
+function stopDrag() {
   isDragging = false;
+  dragTaskIndex = null;
   document.removeEventListener('mousemove', handleDrag);
   document.removeEventListener('mouseup', stopDrag);
 }
 
+// --- Task-name column resize (drag the divider between labels and the chart) ---
+let isResizingColumn = false;
+let resizeStartX = 0;
+let resizeStartOffset = 150;
+
+function initColumnResize(e) {
+  e.stopPropagation();
+  e.preventDefault();
+  isResizingColumn = true;
+  resizeStartX = e.clientX;
+  resizeStartOffset = labelOffset;
+  document.body.style.cursor = 'col-resize';
+  document.querySelectorAll('.col-divider').forEach(d => d.classList.add('resizing'));
+  document.addEventListener('mousemove', handleColumnResize);
+  document.addEventListener('mouseup', stopColumnResize);
+}
+
+function handleColumnResize(e) {
+  if (!isResizingColumn) return;
+  const deltaX = e.clientX - resizeStartX;
+  const newOffset = Math.max(MIN_LABEL_OFFSET, Math.min(MAX_LABEL_OFFSET, resizeStartOffset + deltaX));
+  if (newOffset === labelOffset) return;
+  labelOffset = newOffset;
+  renderChartOnly();
+}
+
+function stopColumnResize() {
+  isResizingColumn = false;
+  document.body.style.cursor = '';
+  document.querySelectorAll('.col-divider').forEach(d => d.classList.remove('resizing'));
+  document.removeEventListener('mousemove', handleColumnResize);
+  document.removeEventListener('mouseup', stopColumnResize);
+}
+
 function renderChartOnly() {
   const validTasks = tasks.filter(t => t.start && t.end);
-  if (!validTasks.length) { document.getElementById("chart").innerHTML = ""; return; }
+  if (!validTasks.length) {
+    document.getElementById("chart").innerHTML = "";
+    return;
+  }
 
   const dates = validTasks.flatMap(t => [parseLocalDate(t.start), parseLocalDate(t.end)]);
   const minDate = new Date(Math.min(...dates));
@@ -574,15 +1247,21 @@ function renderChartOnly() {
   const maxDate = new Date(Math.max(...dates));
 
   const totalDays = renderDates(minDate, maxDate);
+
   const chart = document.getElementById("chart");
   chart.innerHTML = "";
+  // Match the header's width so each row's box spans the full scrollable
+  // range - otherwise the sticky task-name column would detach partway
+  // through a scroll instead of staying frozen the whole way.
+  chart.style.width = (totalDays * pxPerDay + labelOffset) + "px";
 
   for (let i = 0; i < totalDays; i++) {
     const date = new Date(minDate.getTime() + i * dayMs);
-    if (date.getDay() === 0 || date.getDay() === 6) {
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
       const col = document.createElement("div");
       col.className = "weekend-column";
-      col.style.left = (i * pxPerDay + labelWidth) + "px";
+      col.style.left = (i * pxPerDay + labelOffset) + "px";
       col.style.width = pxPerDay + "px";
       chart.appendChild(col);
     }
@@ -590,127 +1269,145 @@ function renderChartOnly() {
 
   const today = new Date();
   today.setHours(0,0,0,0);
-  if (today >= minDate) {
+
+  if (today >= minDate && today <= new Date(maxDate.getTime() + 15 * dayMs)) {
     const col = document.createElement("div");
     col.className = "today-column";
-    col.style.left = ((today - minDate) / dayMs) * pxPerDay + labelWidth + "px";
+    col.style.left = ((today - minDate) / dayMs) * pxPerDay + labelOffset + "px";
     col.style.width = pxPerDay + "px";
     chart.appendChild(col);
   }
 
   tasks.forEach((t, i) => {
+    if (!t.start || !t.end) return;
+    
     const row = document.createElement("div");
     row.className = "row";
     row.dataset.index = i;
 
+    row.ondragover = (e) => e.preventDefault();
+    row.ondragenter = (e) => {
+      e.preventDefault();
+      handleRowDragEnter(chart, '.row', row);
+    };
+    row.ondrop = (e) => e.preventDefault();
+
+    const frozenBg = document.createElement("div");
+    frozenBg.className = "frozen-bg";
+    frozenBg.style.width = labelOffset + "px";
+    frozenBg.style.marginRight = -labelOffset + "px";
+
     const labelContainer = document.createElement("div");
     labelContainer.className = "label-container";
+    labelContainer.style.width = (labelOffset - 20) + "px";
     if (t.linked) labelContainer.style.paddingLeft = "25px";
 
+    const dots = Array(8).fill('<div class="dot"></div>').join('');
     const handle = document.createElement("div");
     handle.className = "drag-handle";
-    handle.innerHTML = Array(8).fill('<div class="dot"></div>').join('');
-
-    // Enable row dragging only from the handle
-    handle.onmousedown = (e) => {
-      e.stopPropagation();
-      row.draggable = true;
-    };
-
+    handle.innerHTML = dots;
+    
+    handle.onmousedown = () => { row.draggable = true; };
+    handle.onmouseup = () => { row.draggable = false; };
+    
     row.ondragstart = (e) => {
-      draggedIndex = i;
+      draggedEl = row;
       row.classList.add('dragging');
+      chart.querySelectorAll('.connector').forEach(c => c.style.display = 'none');
       e.dataTransfer.effectAllowed = 'move';
     };
     row.ondragend = () => {
       row.classList.remove('dragging');
       row.draggable = false;
-      draggedIndex = null;
+      if (draggedEl === row) finalizeRowOrder(chart, '.row');
     };
-    row.ondragover = (e) => {
-      e.preventDefault();
-      if (draggedIndex !== null && draggedIndex !== i) row.classList.add('drag-over');
-    };
-    row.ondragleave = () => row.classList.remove('drag-over');
-    row.ondrop = (e) => {
-      e.preventDefault();
-      row.classList.remove('drag-over');
-      const targetIndex = i;
-      if (draggedIndex !== null && draggedIndex !== targetIndex) {
-        const item = tasks.splice(draggedIndex, 1)[0];
-        tasks.splice(targetIndex, 0, item);
-        draggedIndex = null;
-        renderAll();
-      }
-    };
-    
+
     const label = document.createElement("div");
     label.className = "label";
     label.contentEditable = "true";
     label.textContent = t.name;
-    label.oninput = (e) => { tasks[i].name = e.target.textContent; renderTable(); };
-    label.onmousedown = (e) => { e.stopPropagation(); row.draggable = false; };
+    
+    label.oninput = (e) => {
+      tasks[i].name = e.target.textContent;
+      renderTable();
+    };
+    
+    label.onmousedown = (e) => {
+      e.stopPropagation();
+      row.draggable = false;
+    };
 
     labelContainer.append(handle, label);
 
+    const divider = document.createElement("div");
+    divider.className = "col-divider" + (isResizingColumn ? " resizing" : "");
+    divider.style.left = (labelOffset - 4) + "px";
+    const dividerLine = document.createElement("div");
+    dividerLine.className = "col-divider-line";
+    divider.appendChild(dividerLine);
+    divider.onmousedown = (e) => initColumnResize(e);
+
     const start = parseLocalDate(t.start);
     const end = parseLocalDate(t.end);
-    const leftPos = ((start - minDate) / dayMs) * pxPerDay + labelWidth;
+    const leftPos = ((start - minDate) / dayMs) * pxPerDay + labelOffset;
     const barWidth = Math.max(pxPerDay, ((end - start) / dayMs + 1) * pxPerDay);
 
     if (t.linked && i > 0) {
-        const pEnd = parseLocalDate(tasks[i-1].end);
-        let anchorX = (start >= pEnd) ? (((pEnd - minDate) / dayMs + 1) * pxPerDay + labelWidth) : (((parseLocalDate(tasks[i-1].start) - minDate) / dayMs) * pxPerDay + labelWidth);
-        const connector = document.createElement("div");
-        connector.className = "connector";
-        connector.style.left = Math.min(anchorX, leftPos) + "px";
-        connector.style.top = (i * 40 - 20) + "px";
-        connector.style.width = Math.abs(leftPos - anchorX) + "px";
-        connector.style.height = "40px";
-        if (leftPos < anchorX) { connector.style.borderLeft = "none"; connector.style.borderRight = "2px solid #ccc"; }
-        chart.appendChild(connector);
+      const parent = tasks[i-1];
+      const pStart = parseLocalDate(parent.start);
+      const pEnd = parseLocalDate(parent.end);
+      let anchorX = (start >= pEnd) ? (((pEnd - minDate) / dayMs + 1) * pxPerDay + labelOffset) : (((pStart - minDate) / dayMs) * pxPerDay + labelOffset);
+      const connector = document.createElement("div");
+      connector.className = "connector";
+      const startX = Math.min(anchorX, leftPos);
+      const width = Math.abs(leftPos - anchorX);
+      connector.style.left = startX + "px";
+      connector.style.top = (i * 40 - 20) + "px";
+      connector.style.width = width + "px";
+      connector.style.height = "40px";
+      if (leftPos < anchorX) { connector.style.borderLeft = "none"; connector.style.borderRight = "2px solid #ccc"; }
+      chart.appendChild(connector);
     }
 
     const bar = document.createElement("div");
     bar.className = `bar ${t.linked ? 'linked' : ''}`;
     bar.style.left = leftPos + "px";
     bar.style.width = barWidth + "px";
-    bar.onmousedown = (e) => initDrag(e, i, 'move'); // UPDATE 2: Drag entire bar
 
     const progressFill = document.createElement("div");
     progressFill.className = "bar-progress";
     progressFill.style.width = (t.progress || 0) + "%";
+    bar.appendChild(progressFill);
     
-    const leftH = document.createElement("div"); leftH.className = "resize-handle"; leftH.onmousedown = (e) => initDrag(e, i, 'left');
-    const rightH = document.createElement("div"); rightH.className = "resize-handle"; rightH.onmousedown = (e) => initDrag(e, i, 'right');
+    const leftHandle = document.createElement("div");
+    leftHandle.className = "resize-handle";
+    leftHandle.onmousedown = (e) => initDrag(e, i, 'left');
+    
+    const rightHandle = document.createElement("div");
+    rightHandle.className = "resize-handle";
+    rightHandle.onmousedown = (e) => initDrag(e, i, 'right');
 
-    bar.append(progressFill, leftH, rightH);
-    row.append(labelContainer, bar);
+    bar.append(leftHandle, rightHandle);
+    
+    bar.onclick = (e) => {
+      if (dragMoved) { dragMoved = false; return; }
+      showBarMenu(e, i);
+    };
+    
+    bar.onmousedown = (e) => {
+        e.stopPropagation();
+        row.draggable = false;
+        initDrag(e, i, 'move');
+    };
+
+    row.append(frozenBg, labelContainer, divider, bar);
     chart.appendChild(row);
   });
 }
 
-function renderAll() { renderTable(); renderChartOnly(); }
-
-function printChart() {
-  const timeline = document.getElementById('timeline');
-  // Measure the actual rendered content width (date header is widest)
-  const monthsDiv = document.querySelector('.months');
-  const contentWidth = monthsDiv ? monthsDiv.scrollWidth : timeline.scrollWidth;
-
-  // A4 landscape printable width in px at 96dpi ≈ 1052px (297mm); use window width as fallback
-  const printWidth = 1052;
-  const scale = Math.min(1, printWidth / contentWidth);
-
-  // Inject scale on the timeline element so the @media print rule picks it up
-  timeline.style.transform = `scale(${scale})`;
-  timeline.style.width = (contentWidth) + 'px';
-
-  window.print();
-
-  // Restore after print dialog closes
-  timeline.style.transform = '';
-  timeline.style.width = '';
+function renderAll() {
+  renderTable();
+  renderChartOnly();
 }
 
 function exportData() {
@@ -728,10 +1425,12 @@ function importData() {
   input.onchange = () => {
     const reader = new FileReader();
     reader.onload = e => {
-      const imported = JSON.parse(e.target.result);
-      if (imported.title) document.getElementById("mainTitle").innerText = imported.title;
-      tasks = imported.tasks || imported;
-      renderAll();
+      try {
+        const imported = JSON.parse(e.target.result);
+        if (imported.title) document.getElementById("mainTitle").innerText = imported.title;
+        tasks = imported.tasks || imported;
+        renderAll();
+      } catch (err) { console.error("Invalid JSON"); }
     };
     reader.readAsText(input.files[0]);
   };
@@ -739,5 +1438,6 @@ function importData() {
 
 renderAll();
 </script>
+
 </body>
 </html>

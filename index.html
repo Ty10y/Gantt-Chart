@@ -326,7 +326,8 @@
     .col-divider,
     .action-btn, 
     .bar-menu, 
-    #fileInput {
+    #fileInput,
+    #versionTag {
       display: none !important;
     }
 
@@ -380,6 +381,18 @@
       padding-left: 0 !important;
     }
   }
+
+  #versionTag {
+    position: fixed;
+    bottom: 8px;
+    right: 12px;
+    font-size: 11px;
+    font-style: italic;
+    color: #aaa;
+    pointer-events: none;
+    z-index: 1000;
+  }
+
   /* --- PRINT STYLES END HERE --- */
 </style>
 </head>
@@ -1439,5 +1452,7 @@ function importData() {
 renderAll();
 </script>
 
+<div id="versionTag">v3</div>
+  
 </body>
 </html>

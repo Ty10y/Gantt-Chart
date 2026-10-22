@@ -1,101 +1,144 @@
 # Gantt Chart Editor
 
-A lightweight, interactive Gantt chart that runs entirely in a single HTML file — no install, no server, no dependencies. Open `index.html` <https://ty10y.github.io/Gantt-Chart/> in any modern browser and start planning.
+A lightweight, interactive Gantt chart that runs entirely in a single HTML file. No install, no server, no build step. Open `index.html` in any modern browser, or use the hosted version at <https://ty10y.github.io/Gantt-Chart/>, and start planning.
+
+**Current version: v3**
 
 ---
 
-## How to Use
+## Getting Started
 
-### Getting started
 1. Download or clone this repository.
 2. Open `index.html` in your browser.
-3. The chart loads with sample tasks, automatically shifted so the timeline starts today. Replace them with your own.
+3. The chart loads with sample tasks that start today. Replace them with your own.
 
-### Managing tasks
-- Click **+ Add Task** to append a new row, defaulted to today's date.
-- Edit a task name directly in the table or by clicking the label on the chart.
-- Pick start and end dates using the date pickers in each row.
-- Enter a **Progress** value (0–100) to track completion.
-- Click **✕** to delete a task.
-- Use the **▲ / ▼** buttons or drag the grip handle to reorder tasks — rows nudge out of the way live as you drag, both in the table and on the chart.
-
-### Working with the chart
-- **Move a bar** — click and drag its body left or right to shift both dates at once, without changing the task's duration.
-- **Resize a bar** — drag the left or right edge to adjust the start or end date independently.
-- **Open bar menu** — click a bar without dragging to get link / unlink options.
-- **Link a bar** — links the task visually to the one above it with a connector line and indents its label.
-- **Freeze task names** — the task-name column stays pinned on the left as you scroll the timeline horizontally. Drag the vertical divider next to it to widen or narrow the column to fit your task names.
-
-### Saving and loading
-- Click the **Export JSON** button (floppy-disk icon) to download the chart's data as a `.json` file.
-- Click the **Import JSON** button (download icon) to load a previously exported `.json` file.
-
-### Exporting the chart
-- Click the **Export Chart** button (printer icon) and choose:
-  - **Fit to One Page (PDF)** — the whole chart shrunk to fit on a single landscape page.
-  - **Full Size, Multiple Pages (PDF)** — tiled at full, readable size across as many pages as needed, with the task names and date header repeated on every page so each one stands on its own.
-  - **Download as Image (PNG)** — one full-resolution image of the entire chart.
-- The chart is redrawn independently for export, so nothing gets cut off, split awkwardly, or scaled down too small to read.
-- PDF export loads a small library from the internet the first time you use it; PNG export works fully offline.
+Your work is not saved automatically. Use **Export JSON** to save a chart and **Import JSON** to open it again.
 
 ---
 
-## Features
+## Managing Tasks
 
-### Task management
-- Add, rename, delete, and reorder tasks
-- Drag-and-drop reordering in both the task table and the chart, with a live animated "nudge" as rows make room
-- Progress tracking per task (0–100 %) with a visual fill on each bar
-- New tasks default to today's date
+### The task table
 
-### Interactive chart
-- Drag a bar's body to move a task to new dates, shifting start and end together so duration never changes
-- Resize bars from either edge to extend or shorten a task
-- Click a bar to open a context menu for linking / unlinking
-- Linked tasks display a connector line to the task above and receive an indented label
+| Column | What it does |
+|---|---|
+| **Task Name** | Type to rename. You can also click a name on the chart to edit it there. |
+| **Start / End** | Date pickers in Dates view, day numbers in Weeks view. Changing one edits that edge of the task. |
+| **Duration** | Length in calendar days. Typing a duration moves the end date and keeps the start. |
+| **Progress** | 0–100 %. Shown as the filled portion of the bar. |
+| **Actions** | Reorder (▲ / ▼), color and options (●), convert to milestone (◆), and delete (✕). |
 
-### Timeline display
-- Month and day headers that auto-fit to your date range
-- Today's date highlighted with a distinct column
-- Weekend columns shaded for easy visual separation
-- Sample tasks automatically shift to start from today's date on load
-- Frozen, resizable task-name column with its own header — stays visible while scrolling horizontally, and its width can be dragged to fit longer names
+- Click **+ Add Task** to add a row.
+- Drag the grip handle (⋮⋮) to reorder tasks, in the table or on the chart.
+- **Right-click a row** for a quick **Delete Task** option. While you are typing in a field, right-click still gives the browser's normal copy/paste menu.
+- If an end date is earlier than its start date, the fields turn red and the bar is drawn with a red dashed outline until it is fixed.
+- Click the list icon to hide or show the table without losing any data.
 
-### Chart title
-- Click the title at the top to rename the chart inline
+### Milestones
 
-### Toggle view
-- Hide or show the task table without losing data
+Milestones are single-date events such as a design review, a FAT, or a ship date. They appear as diamonds on the chart.
 
-### Import / Export
-- Export the full chart (title + all tasks) to a `.json` file
-- Re-import any previously exported `.json` to restore the chart
-
-### Export chart
-- Export as a PDF — either shrunk to fit one page, or tiled across multiple pages at full size — or as a single PNG image
-- Every exported page is self-contained, repeating the task names and date header
-- Rendered on a canvas independent of the on-screen layout, so output is never cut off or illegibly small
+- Click **◆** in the Actions column, or choose **Convert to Milestone** from the bar menu.
+- A milestone's end date follows its start date, and it has no duration.
+- The diamond is hollow while pending and filled once progress is set to 100 %.
+- Drag a diamond left or right to move it.
 
 ---
 
-## Revision History
+## Working With the Chart
 
-### v2 — 2026-09-22
-Major update to the interactive editor and export workflow:
-- Drag-and-drop task reordering now animates smoothly, with other rows nudging out of the way live instead of jumping into place
-- Dragging a bar's body moves the whole task (start and end shift together, duration unchanged) — the edge handles still resize start or end independently
-- The task-name column is now frozen while scrolling horizontally, with its own header and a draggable divider to resize it
-- Sample tasks load anchored to today's date, and new tasks default to today
-- Darker, more visible weekend/today/header highlighting, plus general visual polish (row hover state, softer buttons, subtle shadows)
-- Replaced browser-based printing with a built-in exporter: fit the whole chart to one page, tile it across multiple full-size pages with repeating headers, or save a plain image — solving the cut-off/scaling problems of printing directly from the browser
+- **Move a task.** Drag the bar left or right. Both dates shift together, so the duration stays the same.
+- **Resize a task.** Drag the left or right edge of the bar to change the start or end date.
+- **Open the bar menu.** Click or right-click a bar or diamond to:
+  - **Link Bar / Unlink Bar.** Connects the task to the one above it with a connector line and indents its name.
+  - **Convert to Milestone / Convert to Task.**
+  - **Color.** Choose from 12 preset colors, or **Reset to Default Color**.
+- **Resize the name column.** Drag the divider between the task names and the timeline.
+- **Today** is highlighted in yellow. Weekends are shaded gray.
+- Task names stay pinned on the left while you scroll the timeline horizontally.
 
-### Documentation update — 2026-05-13
-- Added the project README: usage guide and full feature list
+### Colors
 
-### Initial release — 2026-05-07
-- Editable task table with add/delete/reorder and drag-and-drop
-- Draggable, resizable bars on the chart
-- Link/unlink tasks with a connector line between them
-- JSON export/import to save and reload a chart
-- Sticky task labels while scrolling
-- One-click browser print, auto-scaled to fit A4 landscape
+Every task and milestone can have its own color, picked from 12 screen-friendly presets. The color dot in the Actions column shows each task's current color, and clicking it opens the same menu. Colors appear on screen, in exports, and in saved JSON files. Default colors are blue for tasks, gray for linked tasks, and near-black for milestones.
+
+---
+
+## Dates View and Weeks View
+
+Use the **Dates | Weeks** switch next to **+ Add Task** to change how the timeline is labeled.
+
+### Dates view
+The timeline shows months and calendar dates. Saturdays and Sundays are shaded.
+
+### Weeks view
+The timeline shows **Week 1, Week 2, Week 3…** across the top and **day numbers** counting up from Day 1 underneath, with no reset at the end of a month. This is useful for relative schedules such as "8 weeks after PO," before real dates are known.
+
+- The first time you open Weeks view, the earliest task start becomes **Day 1**. Day 1 then stays fixed. Dragging tasks around never renumbers the days.
+- Tasks moved before Day 1 show as Day 0, −1, −2 under Week 0, Week −1, and so on.
+- Days 6 and 7 of every week are shaded as weekends.
+- The table's Start and End columns switch to day numbers, so you can type "15" instead of picking a date.
+- **+ Add Task** starts the new task the day after the last task ends, with a 5-day duration, so you can build a sequence quickly.
+- The **↺ button** (Weeks view only) renumbers the days so the earliest task becomes Day 1 again. Tasks keep their calendar dates.
+- Hover over a day number to see its real calendar date.
+
+Tasks always keep their real dates behind the scenes. Switching back to Dates view shows exactly the dates you would expect, and switching back to Weeks view keeps the same Day 1.
+
+---
+
+## Shift Schedule
+
+Use the **calendar button with the ▶ icon** (available in both views) to move the whole project at once, for example when a start is delayed from October 1 to October 20.
+
+- **Project start** (labeled **Day 1** in Weeks view): pick the new start date.
+- **Or shift by _ days**: enter how far to move. Negative numbers move the schedule earlier.
+
+The two fields stay in sync, and a preview line confirms the change before anything happens (for example, "Moves all 5 tasks 19 days later"). Click **Shift** or press **Enter** to apply. Press **Escape** or **Cancel** to close without changes.
+
+Every task, milestone, and Day 1 moves together. Durations, gaps, links, colors, and day numbers are preserved.
+
+---
+
+## Saving and Loading
+
+- **Export JSON** (floppy-disk icon) downloads the chart as a `.json` file. The file includes the title, all tasks, colors, milestones, the current view, and Day 1.
+- **Import JSON** (download icon) opens a previously exported file. Files from older versions still load.
+- If a file can't be imported, an error message explains why, for example invalid JSON, no task list, or a date that isn't in YYYY-MM-DD format.
+
+---
+
+## Exporting the Chart
+
+Click the **Export Chart** button (printer icon) and choose one of:
+
+| Option | Result |
+|---|---|
+| **Fit to One Page (PDF)** | The whole chart scaled to fit on one landscape page. |
+| **Full Size, Multiple Pages (PDF)** | The chart at full readable size, split across as many pages as needed. Every page repeats the task names and date header. |
+| **Download as Image (PNG)** | One full-resolution image with no page limits. |
+
+Exports match the active view: dates in Dates view, weeks and day numbers in Weeks view. Pages are US Letter landscape, which also fits on A4.
+
+> **Note:** PDF export uses the [jsPDF](https://github.com/parallax/jsPDF) library, which loads from the internet the first time you export. PNG export and everything else work offline.
+
+---
+
+## Chart Title
+
+Click the title at the top of the page to rename the chart. The title is also used as the file name for exports.
+
+---
+
+## Version History
+
+**v3**
+- Weeks view with Week / Day numbering and a fixed Day 1
+- Shift Schedule button to move the whole project in either view
+- Duration column
+- Milestones (diamonds)
+- 12-color palette for tasks and milestones, with a color dot in the table
+- Right-click menus on bars, milestones, and table rows
+- Invalid date ranges are flagged in red
+- Clear error messages when importing a bad file
+- Fixed day labels and bar positions shifting after a daylight-saving time change
+- Fixed task names containing quotes breaking the table
+- Fixed linked task names overflowing onto the chart

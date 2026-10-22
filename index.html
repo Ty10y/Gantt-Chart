@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gantt Chart Editor v2</title>
+<title>Gantt Chart Editor v3</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   body { font-family: 'Segoe UI', Arial, sans-serif; margin: 30px; color: #333; line-height: 1.6; }
@@ -104,7 +104,68 @@
   }
   button[data-tooltip]:hover::after { opacity: 1; visibility: visible; }
 
-  .hidden { display: none; }
+  .hidden { display: none !important; }
+
+  /* Dates | Weeks switch */
+  .view-toggle {
+    display: inline-flex;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  .view-toggle button {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 8px 14px;
+    color: #555;
+  }
+  .view-toggle button + button { border-left: 1px solid #ddd; }
+  .view-toggle button.active { background: #eef4ff; color: #2f6fdc; font-weight: 600; }
+
+  /* Day 1 controls, only visible in week view */
+  .week-controls { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
+  .week-controls input[type="date"] {
+    width: auto;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 6px 8px;
+    background: #fff;
+  }
+  .week-controls input[type="date"]:focus { border-color: #4f8df5; }
+
+  .unit { font-size: 12px; color: #888; margin-left: 4px; }
+
+  /* Shift Schedule popover */
+  .bar-menu.shift-menu { padding: 12px 16px; width: 280px; box-sizing: border-box; }
+  .shift-title { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+  .shift-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 8px;
+  }
+  .shift-row input[type="date"] {
+    width: 140px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 5px 6px;
+  }
+  .shift-days { display: flex; align-items: center; }
+  .shift-days input {
+    width: 70px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 5px 6px;
+  }
+  .shift-row input:focus { border-color: #4f8df5; }
+  .shift-hint { font-size: 12px; color: #777; line-height: 1.4; min-height: 17px; }
+  .shift-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .shift-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
   #timeline { border: 1px solid #e0e0e0; border-radius: 10px; overflow-x: auto; position: relative; background: #fff; user-select: none; }
   #dateHeader { position: sticky; top: 0; background: #fff; z-index: 10; border-bottom: 1px solid #eee; }
@@ -167,9 +228,11 @@
     margin-left: 10px;
     z-index: 5;
     width: 140px;
+    box-sizing: border-box; /* linked-task indent stays inside the column */
+    min-width: 0;
     display: flex;
     align-items: center;
-    background: white;
+    background: transparent;
   }
 
   .col-divider {
@@ -237,6 +300,28 @@
   }
 
   .bar.linked { height: 12px; border-radius: 6px; border-color: #888; }
+
+  /* End date before start date: flagged, not silently drawn as a 1-day bar */
+  .bar.invalid { border-color: #d63939; border-style: dashed; }
+  .bar.invalid .bar-progress { background: #f3b4b4; }
+  input.invalid { border-bottom: 1px solid #d63939; background: #fff5f5; color: #b02a2a; }
+  input:disabled { color: #aaa; cursor: not-allowed; }
+
+  /* Milestone: a zero-duration diamond centred on its day. Hollow while
+     pending, filled once progress reaches 100%. */
+  .milestone {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    box-sizing: border-box;
+    border: 2px solid #1f2937;
+    background: #fff;
+    transform: rotate(45deg);
+    z-index: 4;
+    cursor: grab;
+  }
+  .milestone.done { background: #1f2937; }
+  .milestone:active { cursor: grabbing; }
   .bar.linked .bar-progress { background: #888; }
   .bar:active { cursor: grabbing; }
   
@@ -273,8 +358,21 @@
   
   .action-btn { color: #666; border: none; background: transparent; cursor: pointer; font-size: 14px; padding: 4px 8px; margin: 0; }
   .action-btn:hover { color: #000; background: #eee; border-radius: 4px; }
+  .milestone-btn { opacity: 0.35; }
+  .milestone-btn.active { opacity: 1; color: #1f2937; background: #e5e7eb; border-radius: 4px; }
   .delete-btn { color: #cc0000; }
   .delete-btn:hover { color: #ff0000; background: #fee2e2; }
+
+  .color-dot-btn { padding: 4px 6px; }
+  .color-dot {
+    display: block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+  }
+  .bar-menu-item.danger { color: #cc0000; }
+  .bar-menu-item.danger:hover { background: #fee2e2; color: #cc0000; }
   
   .order-controls { display: flex; align-items: center; justify-content: center; gap: 2px; }
 
@@ -300,6 +398,28 @@
   }
   .bar-menu-item:hover:not(.disabled) { background: #f0f7ff; color: #4f8df5; }
   .bar-menu-item.disabled { color: #ccc; cursor: not-allowed; }
+
+  .bar-menu-divider { height: 1px; background: #eee; margin: 4px 0; }
+  .bar-menu-heading { padding: 6px 16px 2px; font-size: 12px; color: #888; }
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 22px);
+    gap: 8px;
+    padding: 6px 16px 8px;
+  }
+  .swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    box-sizing: border-box;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    transition: transform 0.1s;
+  }
+  .swatch:hover { transform: scale(1.15); }
+  .swatch:focus-visible { outline: 2px solid #4f8df5; outline-offset: 2px; }
+  .swatch.selected { box-shadow: 0 0 0 2px #333; }
 
   svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -349,20 +469,29 @@
 
     /* Vibrant Colors for Print */
     .bar {
-      border: 2px solid #004085 !important; /* Dark Blue Border */
       box-shadow: none !important;
       background: #fff !important;
     }
+    .bar:not(.custom-color) {
+      border: 2px solid #004085 !important; /* Dark Blue Border */
+    }
     
-    .bar-progress {
+    .bar:not(.custom-color) .bar-progress {
       background: #0069d9 !important; /* Vibrant Blue Fill */
     }
 
-    .bar.linked {
+    .bar.linked:not(.custom-color) {
       border-color: #333 !important;
     }
-    .bar.linked .bar-progress {
+    .bar.linked:not(.custom-color) .bar-progress {
       background: #444 !important;
+    }
+
+    .milestone:not(.custom-color) {
+      border-color: #000 !important;
+    }
+    .milestone.done:not(.custom-color) {
+      background: #000 !important;
     }
 
     .weekend-column {
@@ -405,10 +534,11 @@
     <thead>
       <tr>
         <th style="width: 50px;"></th>
-        <th style="width: 30%;">Task Name</th>
-        <th style="width: 15%;">Start Date</th>
-        <th style="width: 15%;">End Date</th>
-        <th style="width: 15%;">Progress</th>
+        <th style="width: 28%;">Task Name</th>
+        <th style="width: 14%;" id="startHeader">Start Date</th>
+        <th style="width: 14%;" id="endHeader">End Date</th>
+        <th style="width: 10%;">Duration</th>
+        <th style="width: 11%;">Progress</th>
         <th style="width: 15%;">Actions</th>
       </tr>
     </thead>
@@ -418,6 +548,21 @@
 
 <div class="btn-group">
   <button class="btn-primary" onclick="addTask()">+ Add Task</button>
+
+  <div class="view-toggle" role="group" aria-label="Timeline view">
+    <button id="viewDatesBtn" class="active" onclick="setViewMode('date')">Dates</button>
+    <button id="viewWeeksBtn" onclick="setViewMode('week')">Weeks</button>
+  </div>
+
+  <button id="shiftBtn" onclick="showShiftMenu(event)" data-tooltip="Shift Schedule" aria-label="Shift schedule">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path><path d="M10 13.5v5l4.5-2.5z" fill="currentColor"></path></svg>
+  </button>
+
+  <div id="weekControls" class="week-controls hidden">
+    <button onclick="resetAnchorToEarliest()" data-tooltip="Renumber so the earliest task is Day 1">
+      <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"></path></svg>
+    </button>
+  </div>
   
   <button onclick="toggleTasks()" data-tooltip="Toggle List">
     <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>
@@ -459,6 +604,7 @@ let tasks = [
   { name: "Project Initiation", start: "2026-01-05", end: "2026-01-08", progress: 100, linked: false },
   { name: "Order Material", start: "2026-01-09", end: "2026-01-12", progress: 60, linked: false },
   { name: "Tooling Design", start: "2026-01-13", end: "2026-02-10", progress: 20, linked: false },
+  { name: "Design Review", start: "2026-02-11", end: "2026-02-11", progress: 0, linked: false, milestone: true },
   { name: "Tooling Fabrication", start: "2026-02-13", end: "2026-02-27", progress: 0, linked: false }
 ];
 
@@ -477,6 +623,15 @@ let dragOriginalStart = "";
 let dragOriginalEnd = "";
 let activeMenu = null;
 
+// ---- Week view ----
+// Tasks always store real calendar dates. Week view only changes how the
+// timeline is labelled and shaded, relative to a fixed "Day 1" date
+// (anchorDate). The anchor is set once - to the earliest task start - the
+// first time week view is opened, and then stays put however tasks are
+// dragged, so switching back to date view shows exactly the original dates.
+let viewMode = 'date';    // 'date' | 'week'
+let anchorDate = null;    // 'YYYY-MM-DD', Day 1 in week view
+
 function parseLocalDate(dateStr) {
   if (!dateStr) return null;
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -490,18 +645,258 @@ function formatDate(date) {
   return `${y}-${m}-${d}`;
 }
 
+// Calendar-day arithmetic. Never add multiples of 86,400,000 ms to a local
+// date: across a daylight-saving change a "day" is 23 or 25 hours, so the
+// result lands on the wrong date (e.g. on the November fall-back, local
+// midnight + 24h is still the same day at 11 PM). These helpers work on
+// calendar fields instead, so they are correct in every time zone.
+function addDays(date, n) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
+}
+
+function daysBetween(a, b) {
+  const ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((ub - ua) / dayMs);
+}
+
+// #2: escape anything interpolated into HTML attributes/markup, so names
+// like 12" Conveyor Guard (or a hostile imported file) can't break the table.
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// End date earlier than start date (milestones are exempt; their end
+// always mirrors their start). ISO yyyy-mm-dd strings compare correctly.
+function hasInvalidRange(t) {
+  return !t.milestone && !!t.start && !!t.end && t.end < t.start;
+}
+
+// Where a linked task's connector starts on its parent: the parent's end
+// (or its start, if the child begins before the parent ends). For a
+// milestone parent, the diamond's centre.
+function parentAnchorDay(parent, childStart, minDate) {
+  const pStart = parseLocalDate(parent.start);
+  const pEnd = parseLocalDate(parent.end);
+  if (parent.milestone) return daysBetween(minDate, pStart) + 0.5;
+  return childStart >= pEnd ? daysBetween(minDate, pEnd) + 1 : daysBetween(minDate, pStart);
+}
+
+const mod = (n, m) => ((n % m) + m) % m;
+
+// Proper minus sign for negative day/week numbers (days before Day 1).
+function fmtNum(n) {
+  return n < 0 ? '\u2212' + Math.abs(n) : String(n);
+}
+
+function earliestStart() {
+  const starts = tasks.filter(t => t.start).map(t => t.start).sort();
+  return starts[0] || null;
+}
+
+function ensureAnchor() {
+  if (!anchorDate) anchorDate = earliestStart() || formatDate(new Date());
+}
+
+// Day number of a date relative to Day 1 (Day 1 itself is 1; the day before is 0).
+function dayNumber(date) {
+  return daysBetween(parseLocalDate(anchorDate), date) + 1;
+}
+
+function dateForDay(n) {
+  return formatDate(addDays(parseLocalDate(anchorDate), n - 1));
+}
+
+function durationOf(t) {
+  if (!t.start || !t.end) return '';
+  return daysBetween(parseLocalDate(t.start), parseLocalDate(t.end)) + 1;
+}
+
+// How one timeline column is labelled and shaded in the current view.
+// Shading is purely a drawing decision: real Sat/Sun in date view, days
+// 6 and 7 of each week in week view. It never affects task dates.
+function columnInfo(date) {
+  if (viewMode === 'week') {
+    const dn = dayNumber(date);
+    const wk = Math.floor((dn - 1) / 7) + 1;
+    return {
+      weekend: mod(dn - 1, 7) >= 5,
+      groupKey: wk,
+      groupLabel: `Week ${fmtNum(wk)}`,
+      dayLabel: fmtNum(dn)
+    };
+  }
+  const dow = date.getDay();
+  return {
+    weekend: dow === 0 || dow === 6,
+    groupKey: date.getFullYear() * 12 + date.getMonth(),
+    groupLabel: date.toLocaleString('default', { month: 'short', year: 'numeric' }),
+    dayLabel: String(date.getDate())
+  };
+}
+
+// The span of days the timeline shows. In week view it always starts on a
+// week boundary and always includes Day 1, so the numbering never shifts.
+function getChartRange(validTasks, forExport) {
+  const dates = validTasks.flatMap(t => [parseLocalDate(t.start), parseLocalDate(t.end)]);
+  let lo = new Date(Math.min(...dates));
+  let hi = new Date(Math.max(...dates));
+  if (viewMode === 'week') {
+    ensureAnchor();
+    const a = parseLocalDate(anchorDate);
+    if (a < lo) lo = a;
+    if (a > hi) hi = a;
+    lo = addDays(lo, -mod(dayNumber(lo) - 1, 7));
+    hi = addDays(hi, 6 - mod(dayNumber(hi) - 1, 7));
+    if (!forExport) hi = addDays(hi, 7);
+    return { minDate: lo, totalDays: daysBetween(lo, hi) + 1 };
+  }
+  if (forExport) {
+    lo = addDays(lo, -2);
+    hi = addDays(hi, 2);
+    return { minDate: lo, totalDays: daysBetween(lo, hi) + 1 };
+  }
+  lo = addDays(lo, -5);
+  return { minDate: lo, totalDays: daysBetween(lo, hi) + 15 };
+}
+
+function setViewMode(mode) {
+  if (mode === viewMode) return;
+  viewMode = mode;
+  if (mode === 'week') ensureAnchor();
+  renderAll();
+}
+
+function syncViewControls() {
+  const week = viewMode === 'week';
+  document.getElementById('viewDatesBtn').classList.toggle('active', !week);
+  document.getElementById('viewWeeksBtn').classList.toggle('active', week);
+  document.getElementById('weekControls').classList.toggle('hidden', !week);
+  document.getElementById('startHeader').textContent = week ? 'Start Day' : 'Start Date';
+  document.getElementById('endHeader').textContent = week ? 'End Day' : 'End Date';
+}
+
+// Move every task (and Day 1 with it) by the same number of days. Durations,
+// gaps and day numbers are all preserved - the plan just slides on the calendar.
+function shiftSchedule(days) {
+  if (!days) return;
+  tasks.forEach(t => {
+    if (t.start) t.start = formatDate(addDays(parseLocalDate(t.start), days));
+    if (t.end) t.end = formatDate(addDays(parseLocalDate(t.end), days));
+  });
+  if (anchorDate) anchorDate = formatDate(addDays(parseLocalDate(anchorDate), days));
+  renderAll();
+}
+
+// The date the Shift Schedule popover starts from: Day 1 in week view, the
+// earliest task start in date view.
+function shiftBaseDate() {
+  if (viewMode === 'week') { ensureAnchor(); return anchorDate; }
+  return earliestStart();
+}
+
+function showShiftMenu(e) {
+  e.stopPropagation();
+  closeBarMenu();
+  const base = shiftBaseDate();
+  const datedCount = tasks.filter(t => t.start || t.end).length;
+  const week = viewMode === 'week';
+
+  const menu = document.createElement("div");
+  menu.className = "bar-menu shift-menu";
+  menu.onclick = (ev) => ev.stopPropagation(); // clicks inside don't close it
+
+  if (!base || !datedCount) {
+    menu.innerHTML = `<div class="shift-hint">Add a task with dates first, then shift the schedule from here.</div>`;
+  } else {
+    menu.innerHTML = `
+      <div class="shift-title">Shift schedule</div>
+      <label class="shift-row">
+        <span>${week ? 'Day 1' : 'Project start'}</span>
+        <input type="date" id="shiftDate" value="${base}">
+      </label>
+      <label class="shift-row">
+        <span>Or shift by</span>
+        <span class="shift-days"><input type="number" id="shiftDays" step="1" value="0"><span class="unit">days</span></span>
+      </label>
+      <div class="shift-hint" id="shiftHint"></div>
+      <div class="shift-actions">
+        <button id="shiftCancel">Cancel</button>
+        <button class="btn-primary" id="shiftApply">Shift</button>
+      </div>`;
+  }
+
+  document.body.appendChild(menu);
+  const r = e.currentTarget.getBoundingClientRect();
+  placeMenu(menu, r.left, r.bottom + 6);
+  activeMenu = menu;
+  setTimeout(() => {
+    document.addEventListener('click', closeBarMenu, { once: true });
+  }, 10);
+  if (!base || !datedCount) return;
+
+  const dateIn = menu.querySelector('#shiftDate');
+  const daysIn = menu.querySelector('#shiftDays');
+  const hint = menu.querySelector('#shiftHint');
+  const applyBtn = menu.querySelector('#shiftApply');
+  const baseDate = parseLocalDate(base);
+  let days = 0;
+
+  const showHint = () => {
+    const taskWord = datedCount === 1 ? 'task' : 'tasks';
+    if (!days) hint.textContent = 'Pick a new start date or enter a number of days.';
+    else hint.textContent = `Moves all ${datedCount} ${taskWord} ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ${days > 0 ? 'later' : 'earlier'}.` +
+      (week ? ' Day numbers stay the same.' : '');
+    applyBtn.disabled = !days;
+  };
+  // The two fields stay in sync: a new date sets the day count and vice versa.
+  dateIn.addEventListener('input', () => {
+    if (!ISO_DATE.test(dateIn.value)) return;
+    days = daysBetween(baseDate, parseLocalDate(dateIn.value));
+    daysIn.value = days;
+    showHint();
+  });
+  daysIn.addEventListener('input', () => {
+    const n = parseInt(daysIn.value, 10);
+    if (!Number.isFinite(n)) return;
+    days = n;
+    dateIn.value = formatDate(addDays(baseDate, n));
+    showHint();
+  });
+  const apply = () => { if (days) { closeBarMenu(); shiftSchedule(days); } };
+  applyBtn.addEventListener('click', apply);
+  menu.querySelector('#shiftCancel').addEventListener('click', closeBarMenu);
+  menu.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); apply(); }
+    if (ev.key === 'Escape') closeBarMenu();
+  });
+  showHint();
+  dateIn.focus();
+}
+
+// Renumbering keeps every task on its calendar date and just moves Day 1.
+function resetAnchorToEarliest() {
+  anchorDate = earliestStart() || formatDate(new Date());
+  renderAll();
+}
+
 function shiftTasksToStartToday(taskList) {
   if (!taskList.length) return taskList;
   const firstStart = parseLocalDate(taskList[0].start);
   if (!firstStart) return taskList;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const shiftDays = Math.round((today - firstStart) / dayMs);
+  const shiftDays = daysBetween(firstStart, today);
   if (shiftDays === 0) return taskList;
   return taskList.map(t => ({
     ...t,
-    start: t.start ? formatDate(new Date(parseLocalDate(t.start).getTime() + shiftDays * dayMs)) : t.start,
-    end: t.end ? formatDate(new Date(parseLocalDate(t.end).getTime() + shiftDays * dayMs)) : t.end
+    start: t.start ? formatDate(addDays(parseLocalDate(t.start), shiftDays)) : t.start,
+    end: t.end ? formatDate(addDays(parseLocalDate(t.end), shiftDays)) : t.end
   }));
 }
 
@@ -510,8 +905,16 @@ function toggleTasks() {
 }
 
 function addTask() {
-  const today = formatDate(new Date());
-  tasks.push({ name: "New Task", start: today, end: today, progress: 0, linked: false });
+  if (viewMode === 'week') {
+    // Stack new tasks: start the day after the last dated task ends, 5 days long.
+    ensureAnchor();
+    const ends = tasks.filter(t => t.end).map(t => t.end).sort();
+    const startDate = ends.length ? addDays(parseLocalDate(ends[ends.length - 1]), 1) : parseLocalDate(anchorDate);
+    tasks.push({ name: "New Task", start: formatDate(startDate), end: formatDate(addDays(startDate, 4)), progress: 0, linked: false, milestone: false });
+  } else {
+    const today = formatDate(new Date());
+    tasks.push({ name: "New Task", start: today, end: today, progress: 0, linked: false, milestone: false });
+  }
   renderAll();
 }
 
@@ -529,7 +932,71 @@ function deleteTask(i) {
   renderAll();
 }
 
+// 12 preset colours, chosen to stay distinguishable from each other on
+// screen, readable as a 2px outline on white, and clear of the red used to
+// flag invalid dates and the yellow "today" column.
+const COLOR_PALETTE = [
+  { name: 'Blue',   hex: '#4f8df5' },
+  { name: 'Indigo', hex: '#5b5fc7' },
+  { name: 'Purple', hex: '#8e5cd9' },
+  { name: 'Pink',   hex: '#d6458f' },
+  { name: 'Coral',  hex: '#e8664a' },
+  { name: 'Orange', hex: '#f08c00' },
+  { name: 'Gold',   hex: '#c99a06' },
+  { name: 'Green',  hex: '#2f9e44' },
+  { name: 'Teal',   hex: '#12a594' },
+  { name: 'Cyan',   hex: '#1c9fd6' },
+  { name: 'Brown',  hex: '#8d6e63' },
+  { name: 'Slate',  hex: '#5f6b7a' }
+];
+const DEFAULT_BAR_COLOR = '#4f8df5';
+const DEFAULT_LINKED_COLOR = '#888';
+const DEFAULT_MILESTONE_COLOR = '#1f2937';
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+// A task's custom colour, or null if it uses the default. Only plain hex
+// values are honoured, so nothing odd from an imported file reaches CSS.
+function customColor(t) {
+  return typeof t.color === 'string' && HEX_COLOR.test(t.color) ? t.color : null;
+}
+
+function taskColor(t) {
+  if (t.milestone) return customColor(t) || DEFAULT_MILESTONE_COLOR;
+  return customColor(t) || (t.linked ? DEFAULT_LINKED_COLOR : DEFAULT_BAR_COLOR);
+}
+
+function setTaskColor(index, hex) {
+  if (hex) tasks[index].color = hex;
+  else delete tasks[index].color;
+  closeBarMenu();
+  renderAll();
+}
+
+function showRowMenu(e, index) {
+  e.preventDefault();
+  e.stopPropagation();
+  closeBarMenu();
+  const menu = document.createElement("div");
+  menu.className = "bar-menu";
+  menu.innerHTML = `<div class="bar-menu-item danger" onclick="deleteTask(${index}); closeBarMenu();">Delete Task</div>`;
+  document.body.appendChild(menu);
+  placeMenu(menu, e.clientX, e.clientY);
+  activeMenu = menu;
+  setTimeout(() => {
+    document.addEventListener('click', closeBarMenu, { once: true });
+  }, 10);
+}
+
+// Keep a menu fully on screen when it opens near the right or bottom edge.
+function placeMenu(menu, x, y) {
+  const pad = 8;
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(pad, Math.min(x, window.innerWidth - r.width - pad)) + 'px';
+  menu.style.top = Math.max(pad, Math.min(y, window.innerHeight - r.height - pad)) + 'px';
+}
+
 function showBarMenu(e, index) {
+  e.preventDefault();
   e.stopPropagation();
   closeBarMenu();
 
@@ -545,9 +1012,22 @@ function showBarMenu(e, index) {
   menu.innerHTML = `
     <div class="bar-menu-item ${!canLink ? 'disabled' : ''}" onclick="${canLink ? `setLinkStatus(${index}, true)` : ''}">Link Bar</div>
     <div class="bar-menu-item ${!canUnlink ? 'disabled' : ''}" onclick="${canUnlink ? `setLinkStatus(${index}, false)` : ''}">Unlink Bar</div>
+    <div class="bar-menu-item" onclick="toggleMilestone(${index})">${task.milestone ? 'Convert to Task' : 'Convert to Milestone'}</div>
+    <div class="bar-menu-divider"></div>
+    <div class="bar-menu-heading">Color</div>
+    <div class="swatch-grid">
+      ${COLOR_PALETTE.map(c => `
+        <div class="swatch ${customColor(task) === c.hex ? 'selected' : ''}"
+             style="background:${c.hex}" title="${c.name}" aria-label="${c.name}"
+             role="button" tabindex="0"
+             onclick="setTaskColor(${index}, '${c.hex}')"
+             onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setTaskColor(${index}, '${c.hex}'); }"></div>`).join('')}
+    </div>
+    <div class="bar-menu-item ${customColor(task) ? '' : 'disabled'}" onclick="${customColor(task) ? `setTaskColor(${index}, null)` : ''}">Reset to Default Color</div>
   `;
 
   document.body.appendChild(menu);
+  placeMenu(menu, e.clientX, e.clientY);
   activeMenu = menu;
 
   setTimeout(() => {
@@ -564,6 +1044,19 @@ function closeBarMenu() {
 
 function setLinkStatus(index, status) {
   tasks[index].linked = status;
+  closeBarMenu();
+  renderAll();
+}
+
+// A milestone is a single date: its end is pinned to its start. Converting
+// back to a task leaves it as a 1-day task on that date.
+function toggleMilestone(index) {
+  const t = tasks[index];
+  t.milestone = !t.milestone;
+  if (t.milestone) {
+    if (!t.start) t.start = t.end || formatDate(new Date());
+    t.end = t.start;
+  }
   closeBarMenu();
   renderAll();
 }
@@ -631,12 +1124,7 @@ function getExportRowEntries() {
 function getExportDateRange() {
   const rowEntries = getExportRowEntries();
   if (!rowEntries.length) return null;
-  const dates = rowEntries.flatMap(e => [parseLocalDate(e.t.start), parseLocalDate(e.t.end)]);
-  const minDate = new Date(Math.min(...dates));
-  minDate.setDate(minDate.getDate() - 2);
-  const maxDate = new Date(Math.max(...dates));
-  maxDate.setDate(maxDate.getDate() + 2);
-  const totalDays = Math.round((maxDate - minDate) / dayMs) + 1;
+  const { minDate, totalDays } = getChartRange(rowEntries.map(e => e.t), true);
   return { minDate, totalDays, rowEntries };
 }
 
@@ -697,10 +1185,9 @@ function drawGanttPage({ minDate, dayStart, dayCount, rowEntries, rowStart, rowC
 
   // weekend / today shading, spanning header + full row body
   for (let d = 0; d < dayCount; d++) {
-    const date = new Date(minDate.getTime() + (dayStart + d) * dayMs);
+    const date = addDays(minDate, dayStart + d);
     const x = labelWS + d * pxPerDayS;
-    const dow = date.getDay();
-    if (dow === 0 || dow === 6) {
+    if (columnInfo(date).weekend) {
       ctx.fillStyle = '#e6e9ec';
       ctx.fillRect(x, monthHS, pxPerDayS, dayRowHS);
       ctx.fillStyle = '#e9ebee';
@@ -717,18 +1204,20 @@ function drawGanttPage({ minDate, dayStart, dayCount, rowEntries, rowStart, rowC
   // month bar
   ctx.textAlign = 'center';
   ctx.fillStyle = '#555';
-  let currentMonth = -1, monthStartX = labelWS;
+  // top header row: months in date view, weeks in week view
+  let currentGroup = null, monthStartX = labelWS, currentLabel = '';
   const monthBoxes = [];
   for (let d = 0; d < dayCount; d++) {
-    const date = new Date(minDate.getTime() + (dayStart + d) * dayMs);
+    const info = columnInfo(addDays(minDate, dayStart + d));
     const x = labelWS + d * pxPerDayS;
-    if (date.getMonth() !== currentMonth) {
-      if (currentMonth !== -1) monthBoxes.push({ x: monthStartX, w: x - monthStartX, label: monthLabelFor(minDate, dayStart, d - 1) });
-      currentMonth = date.getMonth();
+    if (info.groupKey !== currentGroup) {
+      if (currentGroup !== null) monthBoxes.push({ x: monthStartX, w: x - monthStartX, label: currentLabel });
+      currentGroup = info.groupKey;
+      currentLabel = info.groupLabel;
       monthStartX = x;
     }
   }
-  monthBoxes.push({ x: monthStartX, w: (labelWS + dayCount * pxPerDayS) - monthStartX, label: monthLabelFor(minDate, dayStart, dayCount - 1) });
+  monthBoxes.push({ x: monthStartX, w: (labelWS + dayCount * pxPerDayS) - monthStartX, label: currentLabel });
   ctx.font = `bold ${f(11)}px Arial, sans-serif`;
   monthBoxes.forEach(mb => {
     ctx.fillStyle = '#555';
@@ -743,13 +1232,13 @@ function drawGanttPage({ minDate, dayStart, dayCount, rowEntries, rowStart, rowC
   // day numbers
   ctx.font = `${f(10)}px Arial, sans-serif`;
   for (let d = 0; d < dayCount; d++) {
-    const date = new Date(minDate.getTime() + (dayStart + d) * dayMs);
+    const date = addDays(minDate, dayStart + d);
     const x = labelWS + d * pxPerDayS;
-    const dow = date.getDay();
+    const info = columnInfo(date);
     const isToday = +date === +today;
     ctx.font = isToday ? `bold ${f(10)}px Arial, sans-serif` : `${f(10)}px Arial, sans-serif`;
-    ctx.fillStyle = isToday ? '#000' : (dow === 0 || dow === 6 ? '#999' : '#888');
-    ctx.fillText(String(date.getDate()), x + pxPerDayS / 2, monthHS + dayRowHS / 2 + 1);
+    ctx.fillStyle = isToday ? '#000' : (info.weekend ? '#999' : '#888');
+    ctx.fillText(info.dayLabel, x + pxPerDayS / 2, monthHS + dayRowHS / 2 + 1);
     ctx.strokeStyle = '#f2f2f2';
     ctx.beginPath();
     ctx.moveTo(x + pxPerDayS - 0.5, monthHS);
@@ -777,12 +1266,9 @@ function drawGanttPage({ minDate, dayStart, dayCount, rowEntries, rowStart, rowC
 
     if (t.linked && globalRow > 0 && r > 0) {
       const parent = rowEntries[globalRow - 1].t;
-      const pStart = parseLocalDate(parent.start), pEnd = parseLocalDate(parent.end);
       const start = parseLocalDate(t.start);
-      const leftPos = labelWS + (((start - minDate) / dayMs) - dayStart) * pxPerDayS;
-      const anchorX = start >= pEnd
-        ? labelWS + ((((pEnd - minDate) / dayMs) + 1) - dayStart) * pxPerDayS
-        : labelWS + (((pStart - minDate) / dayMs) - dayStart) * pxPerDayS;
+      const leftPos = labelWS + (daysBetween(minDate, start) - dayStart) * pxPerDayS;
+      const anchorX = labelWS + (parentAnchorDay(parent, start, minDate) - dayStart) * pxPerDayS;
       const midY = y + rowHS / 2;
       ctx.strokeStyle = '#a8a8a8';
       ctx.lineWidth = 2 * scale;
@@ -794,9 +1280,27 @@ function drawGanttPage({ minDate, dayStart, dayCount, rowEntries, rowStart, rowC
     }
 
     const start = parseLocalDate(t.start), end = parseLocalDate(t.end);
-    const leftPos = labelWS + (((start - minDate) / dayMs) - dayStart) * pxPerDayS;
-    const barWidth = Math.max(pxPerDayS, (((end - start) / dayMs) + 1) * pxPerDayS);
-    if (leftPos + barWidth > labelWS && leftPos < cw) {
+    const leftPos = labelWS + (daysBetween(minDate, start) - dayStart) * pxPerDayS;
+    const barWidth = Math.max(pxPerDayS, (daysBetween(start, end) + 1) * pxPerDayS);
+    if (t.milestone) {
+      const cx = leftPos + pxPerDayS / 2;
+      const cy = y + rowHS / 2;
+      const h = 10 * scale; // centre-to-vertex, matches the 14px rotated square on screen
+      if (cx + h > labelWS && cx - h < cw) {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - h);
+        ctx.lineTo(cx + h, cy);
+        ctx.lineTo(cx, cy + h);
+        ctx.lineTo(cx - h, cy);
+        ctx.closePath();
+        ctx.fillStyle = (t.progress || 0) >= 100 ? taskColor(t) : '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 2 * scale;
+        ctx.strokeStyle = taskColor(t);
+        ctx.stroke();
+      }
+    } else if (leftPos + barWidth > labelWS && leftPos < cw) {
+      const invalid = hasInvalidRange(t);
       const barH = (t.linked ? 12 : 24) * scale;
       const barY = y + (rowHS - barH) / 2;
       const radius = barH / 2;
@@ -808,13 +1312,15 @@ function drawGanttPage({ minDate, dayStart, dayCount, rowEntries, rowStart, rowC
       pathRoundedRect(ctx, leftPos, barY, barWidth, barH, radius);
       ctx.clip();
       const progW = barWidth * (Math.min(100, Math.max(0, t.progress || 0)) / 100);
-      ctx.fillStyle = t.linked ? '#888' : '#4f8df5';
+      ctx.fillStyle = invalid ? '#f3b4b4' : taskColor(t);
       ctx.fillRect(leftPos, barY, progW, barH);
       ctx.restore();
       pathRoundedRect(ctx, leftPos, barY, barWidth, barH, radius);
       ctx.lineWidth = 2 * scale;
-      ctx.strokeStyle = t.linked ? '#888' : '#4f8df5';
+      ctx.strokeStyle = invalid ? '#d63939' : taskColor(t);
+      if (invalid) ctx.setLineDash([4 * scale, 3 * scale]);
       ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     ctx.strokeStyle = '#f9f9f9';
@@ -861,11 +1367,6 @@ function drawGanttPage({ minDate, dayStart, dayCount, rowEntries, rowStart, rowC
   ctx.strokeRect(0.5, 0.5, cw - 1, ch - 1);
 
   return canvas;
-}
-
-function monthLabelFor(minDate, dayStart, dOffset) {
-  const date = new Date(minDate.getTime() + (dayStart + Math.max(0, dOffset)) * dayMs);
-  return date.toLocaleString('default', { month: 'short', year: 'numeric' });
 }
 
 function canvasesToPDF(canvases, filename) {
@@ -961,12 +1462,72 @@ function exportPNG() {
   link.click();
 }
 
+// Start/End edit that edge of the task; Duration moves the end date.
+// startDay/endDay come from the week-view table and are converted to
+// real dates via Day 1. Half-typed numbers (empty field) are ignored.
 function updateTask(index, field, value) {
+  const t = tasks[index];
+  if (field === 'startDay' || field === 'endDay') {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n)) return;
+    ensureAnchor();
+    value = dateForDay(n);
+    field = field === 'startDay' ? 'start' : 'end';
+  }
+  if (field === 'duration') {
+    const n = parseInt(value, 10);
+    if (!(n >= 1) || !t.start || t.milestone) return;
+    t.end = formatDate(addDays(parseLocalDate(t.start), n - 1));
+    updateRowValidity(index);
+    syncRowInputs(index);
+    renderChartOnly();
+    return;
+  }
   if (field === 'progress') {
     value = Math.min(100, Math.max(0, parseInt(value) || 0));
   }
-  tasks[index][field] = value;
+  t[field] = value;
+  if (field === 'start' && t.milestone) t.end = value;
+  if (field === 'start' || field === 'end') {
+    updateRowValidity(index);
+    syncRowInputs(index);
+  }
   renderChartOnly();
+}
+
+function startCellValue(t) {
+  if (viewMode === 'week') return t.start ? dayNumber(parseLocalDate(t.start)) : '';
+  return t.start || '';
+}
+function endCellValue(t) {
+  if (viewMode === 'week') return t.end ? dayNumber(parseLocalDate(t.end)) : '';
+  return t.end || '';
+}
+
+// Refresh the other cells in a row after one of them changes, without
+// touching the cell the user is typing in.
+function syncRowInputs(index) {
+  const tr = document.querySelector(`#taskTableBody tr[data-index="${index}"]`);
+  if (!tr) return;
+  const t = tasks[index];
+  const values = { start: startCellValue(t), end: endCellValue(t), duration: t.milestone ? '' : durationOf(t) };
+  Object.entries(values).forEach(([field, v]) => {
+    const inp = tr.querySelector(`input[data-field="${field}"]`);
+    if (inp && inp !== document.activeElement) inp.value = v;
+  });
+}
+
+// #6: flag (rather than silently "fix") an end date that's before the start
+// date. Auto-correcting would fight the user mid-edit, since date inputs fire
+// on every typed segment.
+function updateRowValidity(index) {
+  const tr = document.querySelector(`#taskTableBody tr[data-index="${index}"]`);
+  if (!tr) return;
+  const invalid = hasInvalidRange(tasks[index]);
+  tr.querySelectorAll('input[data-field="start"], input[data-field="end"], input[data-field="duration"]').forEach(inp => {
+    inp.classList.toggle('invalid', invalid);
+    if (inp.dataset.field !== 'duration' || invalid) inp.title = invalid ? 'End is before start' : '';
+  });
 }
 
 // --- Live drag-to-reorder helpers ---
@@ -1033,6 +1594,8 @@ function finalizeRowOrder(container, rowSelector) {
 }
 
 function renderTable() {
+  if (viewMode === 'week') ensureAnchor();
+  syncViewControls();
   const tbody = document.getElementById("taskTableBody");
   tbody.innerHTML = "";
   tasks.forEach((t, i) => {
@@ -1070,13 +1633,24 @@ function renderTable() {
     tr.innerHTML = `
         <td class="handle-cell"></td>
         <td style="${t.linked ? 'padding-left: 30px;' : ''}">
-          <input value="${t.name}" oninput="updateTask(${i}, 'name', this.value)">
+          <input value="${escapeHtml(t.name)}" oninput="updateTask(${i}, 'name', this.value)">
         </td>
-        <td><input type="date" value="${t.start}" oninput="updateTask(${i}, 'start', this.value)"></td>
-        <td><input type="date" value="${t.end}" oninput="updateTask(${i}, 'end', this.value)"></td>
+        ${viewMode === 'week' ? `
+        <td><input type="number" step="1" data-field="start" value="${escapeHtml(startCellValue(t))}" oninput="updateTask(${i}, 'startDay', this.value)"></td>
+        <td><input type="number" step="1" data-field="end" value="${escapeHtml(endCellValue(t))}" oninput="updateTask(${i}, 'endDay', this.value)" ${t.milestone ? 'disabled title="Milestones have a single date"' : ''}></td>
+        ` : `
+        <td><input type="date" data-field="start" value="${escapeHtml(t.start)}" oninput="updateTask(${i}, 'start', this.value)"></td>
+        <td><input type="date" data-field="end" value="${escapeHtml(t.end)}" oninput="updateTask(${i}, 'end', this.value)" ${t.milestone ? 'disabled title="Milestones have a single date"' : ''}></td>
+        `}
         <td>
           <div style="display:flex; align-items:center;">
-            <input type="number" min="0" max="100" value="${t.progress || 0}" oninput="updateTask(${i}, 'progress', this.value)" style="width: 60px;">
+            <input type="number" min="1" step="1" data-field="duration" value="${t.milestone ? '' : durationOf(t)}" placeholder="${t.milestone ? '—' : ''}" oninput="updateTask(${i}, 'duration', this.value)" style="width: 60px;" ${t.milestone ? 'disabled title="Milestones have no duration"' : ''}>
+            <span class="unit">days</span>
+          </div>
+        </td>
+        <td>
+          <div style="display:flex; align-items:center;">
+            <input type="number" min="0" max="100" value="${Number(t.progress) || 0}" oninput="updateTask(${i}, 'progress', this.value)" style="width: 60px;">
             <span style="font-size: 12px; color: #888;">%</span>
           </div>
         </td>
@@ -1084,6 +1658,8 @@ function renderTable() {
           <div class="order-controls">
             <button class="action-btn" onclick="moveTask(${i}, -1)" ${i === 0 ? 'disabled style="opacity:0.2"' : ''}>▲</button>
             <button class="action-btn" onclick="moveTask(${i}, 1)" ${i === tasks.length - 1 ? 'disabled style="opacity:0.2"' : ''}>▼</button>
+            <button class="action-btn color-dot-btn" onclick="showBarMenu(event, ${i})" title="Color and options"><span class="color-dot" style="background:${taskColor(t)}"></span></button>
+            <button class="action-btn milestone-btn ${t.milestone ? 'active' : ''}" onclick="toggleMilestone(${i})" title="${t.milestone ? 'Convert to task' : 'Convert to milestone'}">◆</button>
             <button class="action-btn delete-btn" onclick="deleteTask(${i})">✕</button>
           </div>
         </td>
@@ -1098,11 +1674,19 @@ function renderTable() {
       };
     });
 
+    // Right-click the row for a Delete option. While you're editing a field,
+    // the browser's own menu is left alone so copy/paste still works.
+    tr.oncontextmenu = (e) => {
+      if (e.target.matches('input') && e.target === document.activeElement) return;
+      showRowMenu(e, i);
+    };
+
     tbody.appendChild(tr);
+    updateRowValidity(i);
   });
 }
 
-function renderDates(minDate, maxDate) {
+function renderDates(minDate, totalDays) {
   const monthsDiv = document.querySelector(".months");
   const daysDiv = document.querySelector(".days");
   monthsDiv.innerHTML = "";
@@ -1110,41 +1694,42 @@ function renderDates(minDate, maxDate) {
 
   document.getElementById("taskNameHeader").style.width = labelOffset + "px";
 
-  const totalDays = Math.ceil((maxDate - minDate) / dayMs) + 15;
   const width = totalDays * pxPerDay + labelOffset;
   monthsDiv.style.width = daysDiv.style.width = width + "px";
 
   const today = new Date();
   today.setHours(0,0,0,0);
 
-  let currentMonth = -1;
+  let currentGroup = null;
   let monthStartX = 0;
 
   for (let i = 0; i < totalDays; i++) {
-    const date = new Date(minDate.getTime() + i * dayMs);
+    const date = addDays(minDate, i);
     const x = i * pxPerDay + labelOffset;
-    const dayOfWeek = date.getDay();
+    const info = columnInfo(date);
 
     const d = document.createElement("div");
     d.className = "day";
     d.style.left = x + "px";
     d.style.width = pxPerDay + "px";
-    d.textContent = date.getDate();
+    d.textContent = info.dayLabel;
+    if (viewMode === 'week') d.title = date.toLocaleDateString();
 
-    if (dayOfWeek === 0 || dayOfWeek === 6) d.classList.add("weekend-header");
+    if (info.weekend) d.classList.add("weekend-header");
     if (+date === +today) d.classList.add("today-header");
     daysDiv.appendChild(d);
 
-    if (date.getMonth() !== currentMonth) {
-      if (currentMonth !== -1) {
+    // top row groups days into months (date view) or weeks (week view)
+    if (info.groupKey !== currentGroup) {
+      if (currentGroup !== null) {
         monthsDiv.lastChild.style.width = (x - monthStartX) + "px";
       }
-      currentMonth = date.getMonth();
+      currentGroup = info.groupKey;
       monthStartX = x;
       const m = document.createElement("div");
       m.className = "month";
       m.style.left = x + "px";
-      m.textContent = date.toLocaleString("default", { month: "short", year: "numeric" });
+      m.textContent = info.groupLabel;
       monthsDiv.appendChild(m);
     }
   }
@@ -1155,6 +1740,7 @@ function renderDates(minDate, maxDate) {
 
 function initDrag(e, index, type) {
   e.stopPropagation();
+  if (e.button !== 0) return; // left button only; right-click opens the menu
   isDragging = true;
   dragMoved = false;
   dragType = type;
@@ -1179,14 +1765,14 @@ function handleDrag(e) {
 
   if (dragType === 'move') {
     // Whole-bar drag: shift both dates by the same amount, so duration never changes.
-    const newStartStr = formatDate(new Date(originalStart.getTime() + daysShift * dayMs));
-    const newEndStr = formatDate(new Date(originalEnd.getTime() + daysShift * dayMs));
+    const newStartStr = formatDate(addDays(originalStart, daysShift));
+    const newEndStr = task.milestone ? newStartStr : formatDate(addDays(originalEnd, daysShift));
     if (newStartStr === task.start && newEndStr === task.end) return;
     task.start = newStartStr;
     task.end = newEndStr;
     dragMoved = true;
   } else if (dragType === 'left') {
-    const newDate = new Date(originalStart.getTime() + daysShift * dayMs);
+    const newDate = addDays(originalStart, daysShift);
     const newDateStr = formatDate(newDate);
     if (newDateStr === task.start) return;
     if (newDate <= parseLocalDate(task.end)) {
@@ -1194,7 +1780,7 @@ function handleDrag(e) {
       dragMoved = true;
     }
   } else {
-    const newDate = new Date(originalEnd.getTime() + daysShift * dayMs);
+    const newDate = addDays(originalEnd, daysShift);
     const newDateStr = formatDate(newDate);
     if (newDateStr === task.end) return;
     if (newDate >= parseLocalDate(task.start)) {
@@ -1202,12 +1788,14 @@ function handleDrag(e) {
       dragMoved = true;
     }
   }
-  renderAll();
+  // #6: only the chart changes while dragging; the table is rebuilt once on release.
+  renderChartOnly();
 }
 
 function stopDrag() {
   isDragging = false;
   dragTaskIndex = null;
+  if (dragMoved) renderTable();
   document.removeEventListener('mousemove', handleDrag);
   document.removeEventListener('mouseup', stopDrag);
 }
@@ -1253,13 +1841,9 @@ function renderChartOnly() {
     return;
   }
 
-  const dates = validTasks.flatMap(t => [parseLocalDate(t.start), parseLocalDate(t.end)]);
-  const minDate = new Date(Math.min(...dates));
-  minDate.setDate(minDate.getDate() - 5);
+  const { minDate, totalDays } = getChartRange(validTasks, false);
   currentMinDate = minDate;
-  const maxDate = new Date(Math.max(...dates));
-
-  const totalDays = renderDates(minDate, maxDate);
+  renderDates(minDate, totalDays);
 
   const chart = document.getElementById("chart");
   chart.innerHTML = "";
@@ -1269,9 +1853,8 @@ function renderChartOnly() {
   chart.style.width = (totalDays * pxPerDay + labelOffset) + "px";
 
   for (let i = 0; i < totalDays; i++) {
-    const date = new Date(minDate.getTime() + i * dayMs);
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
+    const date = addDays(minDate, i);
+    if (columnInfo(date).weekend) {
       const col = document.createElement("div");
       col.className = "weekend-column";
       col.style.left = (i * pxPerDay + labelOffset) + "px";
@@ -1283,10 +1866,11 @@ function renderChartOnly() {
   const today = new Date();
   today.setHours(0,0,0,0);
 
-  if (today >= minDate && today <= new Date(maxDate.getTime() + 15 * dayMs)) {
+  const todayIdx = daysBetween(minDate, today);
+  if (todayIdx >= 0 && todayIdx < totalDays) {
     const col = document.createElement("div");
     col.className = "today-column";
-    col.style.left = ((today - minDate) / dayMs) * pxPerDay + labelOffset + "px";
+    col.style.left = todayIdx * pxPerDay + labelOffset + "px";
     col.style.width = pxPerDay + "px";
     chart.appendChild(col);
   }
@@ -1362,14 +1946,12 @@ function renderChartOnly() {
 
     const start = parseLocalDate(t.start);
     const end = parseLocalDate(t.end);
-    const leftPos = ((start - minDate) / dayMs) * pxPerDay + labelOffset;
-    const barWidth = Math.max(pxPerDay, ((end - start) / dayMs + 1) * pxPerDay);
+    const leftPos = daysBetween(minDate, start) * pxPerDay + labelOffset;
+    const barWidth = Math.max(pxPerDay, (daysBetween(start, end) + 1) * pxPerDay);
 
-    if (t.linked && i > 0) {
+    if (t.linked && i > 0 && tasks[i-1].start && tasks[i-1].end) {
       const parent = tasks[i-1];
-      const pStart = parseLocalDate(parent.start);
-      const pEnd = parseLocalDate(parent.end);
-      let anchorX = (start >= pEnd) ? (((pEnd - minDate) / dayMs + 1) * pxPerDay + labelOffset) : (((pStart - minDate) / dayMs) * pxPerDay + labelOffset);
+      const anchorX = parentAnchorDay(parent, start, minDate) * pxPerDay + labelOffset;
       const connector = document.createElement("div");
       connector.className = "connector";
       const startX = Math.min(anchorX, leftPos);
@@ -1382,14 +1964,44 @@ function renderChartOnly() {
       chart.appendChild(connector);
     }
 
+    if (t.milestone) {
+      const MS_SIZE = 14;
+      const diamond = document.createElement("div");
+      diamond.className = "milestone" + ((t.progress || 0) >= 100 ? " done" : "") + (customColor(t) ? " custom-color" : "");
+      diamond.style.borderColor = taskColor(t);
+      diamond.style.background = (t.progress || 0) >= 100 ? taskColor(t) : '#fff';
+      diamond.style.left = (leftPos + (pxPerDay - MS_SIZE) / 2) + "px";
+      diamond.title = `${t.name} — ${viewMode === 'week' ? 'Day ' + fmtNum(dayNumber(start)) : start.toLocaleDateString()}`;
+      diamond.onclick = (e) => {
+        if (dragMoved) { dragMoved = false; return; }
+        showBarMenu(e, i);
+      };
+      diamond.oncontextmenu = (e) => showBarMenu(e, i);
+      diamond.onmousedown = (e) => {
+        e.stopPropagation();
+        row.draggable = false;
+        initDrag(e, i, 'move');
+      };
+      row.append(frozenBg, labelContainer, divider, diamond);
+      chart.appendChild(row);
+      return;
+    }
+
     const bar = document.createElement("div");
-    bar.className = `bar ${t.linked ? 'linked' : ''}`;
+    bar.className = `bar ${t.linked ? 'linked' : ''} ${hasInvalidRange(t) ? 'invalid' : ''}`;
+    if (hasInvalidRange(t)) bar.title = 'End date is before start date';
     bar.style.left = leftPos + "px";
     bar.style.width = barWidth + "px";
 
     const progressFill = document.createElement("div");
     progressFill.className = "bar-progress";
     progressFill.style.width = (t.progress || 0) + "%";
+    // Invalid date ranges keep their red "fix me" styling regardless of colour.
+    if (!hasInvalidRange(t)) {
+      bar.style.borderColor = taskColor(t);
+      progressFill.style.background = taskColor(t);
+      if (customColor(t)) bar.classList.add('custom-color');
+    }
     bar.appendChild(progressFill);
     
     const leftHandle = document.createElement("div");
@@ -1406,6 +2018,7 @@ function renderChartOnly() {
       if (dragMoved) { dragMoved = false; return; }
       showBarMenu(e, i);
     };
+    bar.oncontextmenu = (e) => showBarMenu(e, i);
     
     bar.onmousedown = (e) => {
         e.stopPropagation();
@@ -1424,35 +2037,91 @@ function renderAll() {
 }
 
 function exportData() {
-  const data = { title: document.getElementById("mainTitle").innerText.trim(), tasks: tasks };
+  const data = {
+    title: document.getElementById("mainTitle").innerText.trim(),
+    viewMode,
+    anchorDate,
+    tasks: tasks
+  };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `${data.title.replace(/\s+/g, '_')}.json`;
+  a.download = `${getChartTitle()}.json`; // same sanitised name as the PDF/PNG exports
   a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// #5: turn whatever was in the file into a clean task list, or throw an
+// Error whose message is shown to the user.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+function normalizeImportedTasks(raw) {
+  if (!Array.isArray(raw)) {
+    throw new Error('This file doesn\'t contain a task list. Choose a .json file saved with the Export JSON button.');
+  }
+  return raw.map((t, n) => {
+    if (!t || typeof t !== 'object') throw new Error(`Task ${n + 1} isn't a valid task entry.`);
+    const start = t.start == null ? '' : String(t.start);
+    const end = t.end == null ? '' : String(t.end);
+    if ((start && !ISO_DATE.test(start)) || (end && !ISO_DATE.test(end))) {
+      throw new Error(`Task ${n + 1} ("${String(t.name ?? '')}") has a date that isn't in YYYY-MM-DD format.`);
+    }
+    const milestone = !!t.milestone;
+    const color = typeof t.color === 'string' && HEX_COLOR.test(t.color) ? t.color.toLowerCase() : undefined;
+    return {
+      ...(color ? { color } : {}),
+      name: String(t.name ?? ''),
+      start,
+      end: milestone ? (start || end) : end,
+      progress: Math.min(100, Math.max(0, parseInt(t.progress, 10) || 0)),
+      linked: !!t.linked,
+      milestone
+    };
+  });
 }
 
 function importData() {
   const input = document.getElementById("fileInput");
-  input.click();
+  // Clear the previous selection so picking the same file again still fires 'change'.
+  input.value = '';
   input.onchange = () => {
+    const file = input.files[0];
+    if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
+      let imported;
       try {
-        const imported = JSON.parse(e.target.result);
-        if (imported.title) document.getElementById("mainTitle").innerText = imported.title;
-        tasks = imported.tasks || imported;
+        imported = JSON.parse(e.target.result);
+      } catch (err) {
+        alert(`Couldn't import "${file.name}": it isn't valid JSON.`);
+        return;
+      }
+      try {
+        const rawTasks = Array.isArray(imported) ? imported : (imported && imported.tasks);
+        const newTasks = normalizeImportedTasks(rawTasks);
+        if (imported && typeof imported.title === 'string' && imported.title.trim()) {
+          document.getElementById("mainTitle").innerText = imported.title;
+        }
+        tasks = newTasks;
+        // Day 1 belongs to the chart: take it from the file, or work it out
+        // fresh (never carry over the previous chart's Day 1).
+        anchorDate = imported && typeof imported.anchorDate === 'string' && ISO_DATE.test(imported.anchorDate)
+          ? imported.anchorDate : null;
+        if (imported && (imported.viewMode === 'week' || imported.viewMode === 'date')) viewMode = imported.viewMode;
         renderAll();
-      } catch (err) { console.error("Invalid JSON"); }
+      } catch (err) {
+        alert(`Couldn't import "${file.name}": ${err.message}`);
+      }
     };
-    reader.readAsText(input.files[0]);
+    reader.onerror = () => alert(`Couldn't read "${file.name}".`);
+    reader.readAsText(file);
   };
+  input.click();
 }
 
 renderAll();
 </script>
 
-<div id="versionTag">v2</div>
+<div id="versionTag">v3</div>
   
 </body>
 </html>
